@@ -156,7 +156,7 @@ function parseOcr(text){
   if(!actual&&grossFare&&fee&&grossFare>fee)actual=grossFare-fee+tip;
   if(!actual&&grossFare&&!fee){fee=Math.round(grossFare*.25);actual=grossFare-fee+tip+adjustment;estimatedMoney=true}
   // 沒有明確的實拿或行程費用標籤時不要猜最後一個金額，避免把日期、點數或其他費用誤當實拿。
-  if(!actual&&!grossFare){const positive=dollars.filter(n=>n>0&&n<10000);actual=positive.length===1?positive[0]:''}
+  if(!actual&&!grossFare){const positive=dollars.filter(n=>n>0&&n<10000),decimalMoney=[...new Set([...clean.matchAll(/(?:^|\s|[$S])\s*(\d{2,4})[.,]00\b/gm)].map(m=>+m[1]).filter(n=>n>=50&&n<10000))];actual=positive.length===1?positive[0]:(decimalMoney.length===1?decimalMoney[0]:'')}
   if(!fee&&grossFare&&actual)fee=Math.max(0,grossFare+tip+adjustment-actual);
   return{km:distances.length?Math.max(...distances):'',mins:time?(+time[1]+(+time[2]||0)/60):'',actual,fee:fee||'',toll:tolls.at(-1)||0,tollFound:tolls.length>0,tip,adjustment,gross:grossFare||'',estimatedMoney};
 }
