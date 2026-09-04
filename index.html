@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <meta name="description" content="免安裝的台灣計程車車資判斷工具">
+  <link rel="manifest" href="manifest.webmanifest">
+  <title>車資判斷助手</title>
+  <style>
+    :root{--bg:#f3f4f6;--card:#fff;--ink:#111827;--muted:#6b7280;--line:#e5e7eb;--yellow:#fbbf24;--green:#059669;--red:#dc2626;--blue:#2563eb}
+    *{box-sizing:border-box}body{margin:0;background:linear-gradient(150deg,#fff7d6 0,#f3f4f6 38%);color:var(--ink);font-family:system-ui,-apple-system,"Noto Sans TC",sans-serif}
+    main{width:min(720px,100%);margin:auto;padding:18px 14px 48px}.hero{display:flex;gap:12px;align-items:center;margin:4px 2px 16px}.logo{display:grid;place-items:center;width:52px;height:52px;border-radius:16px;background:#111827;font-size:27px}.hero h1{font-size:24px;margin:0}.hero p{margin:3px 0 0;color:var(--muted);font-size:14px}
+    .card{background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:20px;padding:16px;margin:12px 0;box-shadow:0 12px 35px rgba(17,24,39,.06)}
+    label{font-size:13px;font-weight:700;display:block;margin:12px 0 6px}input,select,button{width:100%;min-height:48px;border-radius:12px;border:1px solid #d1d5db;background:white;padding:10px 12px;font:inherit;color:inherit}input:focus,select:focus{outline:3px solid #fde68a;border-color:#f59e0b}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.address{display:grid;grid-template-columns:1fr auto;gap:8px}.address button{width:50px;padding:0;font-size:20px}
+    button{cursor:pointer;font-weight:800}.primary{margin-top:16px;background:#111827;color:white;border:0}.secondary{background:#fff7d6;border-color:#fbbf24}.status{min-height:22px;margin:10px 2px 0;font-size:14px;color:var(--muted)}
+    .results{display:none}.results.show{display:block}.route{font-size:14px;color:var(--muted);margin-bottom:12px}.big-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.metric{background:#f9fafb;border:1px solid var(--line);border-radius:15px;padding:13px}.metric span{display:block;color:var(--muted);font-size:12px}.metric strong{display:block;font-size:24px;margin-top:3px}.metric.accent{background:#fffbeb;border-color:#fde68a}.metric.money{background:#ecfdf5;border-color:#a7f3d0}.detail{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.detail .metric strong{font-size:17px}.verdict{border-radius:14px;padding:12px 14px;margin-top:10px;font-weight:800}.good{background:#d1fae5;color:#065f46}.mid{background:#fef3c7;color:#92400e}.bad{background:#fee2e2;color:#991b1b}
+    details{margin-top:10px}summary{cursor:pointer;font-weight:800}.foot{color:var(--muted);font-size:12px;line-height:1.55;text-align:center;margin-top:16px}.switch{display:flex;align-items:center;gap:8px;margin-top:12px}.switch input{width:20px;min-height:20px}.switch label{margin:0;font-weight:600}
+    @media(max-width:500px){.row,.big-grid{grid-template-columns:1fr}.detail{grid-template-columns:1fr 1fr}.hero h1{font-size:22px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero"><div class="logo">🚕</div><div><h1>車資判斷助手</h1><p>輸入路線，快速判斷這趟值不值得接</p></div></header>
+
+  <section class="card">
+    <label for="from">起點</label>
+    <div class="address"><input id="from" autocomplete="street-address" placeholder="例如：三重龍濱路"><button id="locate" title="使用目前位置" aria-label="使用目前位置">📍</button></div>
+    <label for="to">終點</label><input id="to" autocomplete="street-address" placeholder="例如：桃機2、台北車站">
+    <div class="row">
+      <div><label for="pickup">接客距離（公里）</label><input id="pickup" type="number" min="0" step="0.1" value="0"></div>
+      <div><label for="wait">停等時間（分鐘）</label><input id="wait" type="number" min="0" step="1" value="0"></div>
+    </div>
+    <div class="switch"><input id="night" type="checkbox"><label for="night">夜間 23:00–06:00（加收 $20）</label></div>
+    <button class="primary" id="routeBtn">估算路線與車資</button>
+    <div class="status" id="status" role="status"></div>
+  </section>
+
+  <section class="card">
+    <details><summary>無法取得路線？改用手動輸入</summary>
+      <div class="row"><div><label for="km">行程距離（公里）</label><input id="km" type="number" min="0" step="0.1" placeholder="例如 13.7"></div><div><label for="mins">行車時間（分鐘）</label><input id="mins" type="number" min="0" step="1" placeholder="例如 24"></div></div>
+      <button class="secondary" id="manualBtn">用手動數字計算</button>
+    </details>
+  </section>
+
+  <section class="card results" id="results">
+    <div class="route" id="routeText"></div>
+    <div class="big-grid">
+      <div class="metric accent"><span>雙北跳表預估</span><strong id="meterFare">$0</strong></div>
+      <div class="metric money"><span>平台司機預估實拿</span><strong id="driverFare">$0</strong></div>
+    </div>
+    <div class="detail">
+      <div class="metric"><span>平台行程費用</span><strong id="platformFare">$0</strong></div>
+      <div class="metric"><span>實拿／行程公里</span><strong id="perKm">$0</strong></div>
+      <div class="metric"><span>預估時薪</span><strong id="hourly">$0</strong></div>
+    </div>
+    <div class="verdict" id="verdict"></div>
+  </section>
+
+  <p class="foot">跳表採雙北基一般費率：1.25 公里 $85、續程每 200 公尺 $5、低速停等每 60 秒 $5；實際金額依跳表、路況、加成與平台報價為準。路線資料 © OpenStreetMap contributors，routing by OSRM。</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const aliases={"桃機1":"桃園國際機場第一航廈","桃機2":"桃園國際機場第二航廈","桃機":"桃園國際機場","北車":"台北車站","松機":"台北松山機場"};
+const money=n=>`$${Math.max(0,Math.round(n)).toLocaleString('zh-TW')}`;
+function expandAddress(v){const s=v.trim();return (aliases[s]||s)+(s.includes('台灣')?'':' 台灣')}
+async function geocode(q){
+  const key='geo:'+q, cached=localStorage.getItem(key); if(cached)return JSON.parse(cached);
+  const url=`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=tw&q=${encodeURIComponent(expandAddress(q))}`;
+  const res=await fetch(url); if(!res.ok)throw new Error('地址查詢服務暫時無法使用'); const data=await res.json();
+  if(!data.length)throw new Error(`找不到地址：${q}`); const out={lat:+data[0].lat,lon:+data[0].lon,name:data[0].display_name}; localStorage.setItem(key,JSON.stringify(out)); return out;
+}
+async function route(a,b){const url=`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false&alternatives=false&steps=false`;const res=await fetch(url);if(!res.ok)throw new Error('路線服務暫時無法使用');const d=await res.json();if(d.code!=='Ok'||!d.routes?.length)throw new Error('找不到可行車路線');return {km:d.routes[0].distance/1000,mins:d.routes[0].duration/60}}
+function calculate(km,mins,label){
+  const wait=Math.max(0,+$('wait').value||0), pickup=Math.max(0,+$('pickup').value||0), night=$('night').checked;
+  const meter=85+Math.max(0,Math.ceil((km-1.25)/.2))*5+Math.ceil(wait)*5+(night?20:0);
+  // 第一版模型依先前提供的實際訂單樣本估算；平台即時價格可能因需求與加成大幅變動。
+  const platform=Math.max(85,55+24.2*km+1.45*mins)+(night?20:0);
+  const driver=platform*.75, totalKm=km+pickup, totalMins=mins+pickup/25*60;
+  const perKm=driver/Math.max(totalKm,.1), hourly=driver/Math.max(totalMins/60,.1);
+  $('meterFare').textContent=money(meter);$('platformFare').textContent=money(platform);$('driverFare').textContent=money(driver);$('perKm').textContent=money(perKm);$('hourly').textContent=money(hourly);
+  $('routeText').textContent=`${label}｜${km.toFixed(1)} 公里・約 ${Math.round(mins)} 分鐘${pickup?`・接客 ${pickup.toFixed(1)} 公里`:''}`;
+  const score=perKm>=22&&hourly>=450?'good':perKm>=16&&hourly>=320?'mid':'bad';
+  $('verdict').className='verdict '+score;$('verdict').textContent=score==='good'?'值得接：單位收入與時薪都不錯':score==='mid'?'普通：可依目的地與回程狀況決定':'不建議：接客成本或單位收入偏低';
+  $('results').classList.add('show');$('results').scrollIntoView({behavior:'smooth',block:'start'});
+}
+$('routeBtn').addEventListener('click',async()=>{const f=$('from').value.trim(),t=$('to').value.trim();if(!f||!t){$('status').textContent='請輸入起點與終點';return}try{$('routeBtn').disabled=true;$('status').textContent='正在查詢地址與路線…';const a=await geocode(f);await new Promise(r=>setTimeout(r,1050));const b=await geocode(t);const r=await route(a,b);$('km').value=r.km.toFixed(1);$('mins').value=Math.round(r.mins);calculate(r.km,r.mins,`${f} → ${t}`);$('status').textContent='路線估算完成'}catch(e){$('status').textContent=`自動路線失敗：${e.message}。可改用手動輸入。`}finally{$('routeBtn').disabled=false}});
+$('manualBtn').addEventListener('click',()=>{const km=+$('km').value,mins=+$('mins').value;if(!(km>0)||!(mins>0)){alert('請輸入有效的距離與時間');return}calculate(km,mins,'手動估算')});
+$('locate').addEventListener('click',()=>{if(!navigator.geolocation){$('status').textContent='此瀏覽器不支援定位';return}$('status').textContent='正在取得目前位置…';navigator.geolocation.getCurrentPosition(p=>{$('from').value=`${p.coords.latitude.toFixed(6)},${p.coords.longitude.toFixed(6)}`;$('from').dataset.coords=`${p.coords.longitude},${p.coords.latitude}`;$('status').textContent='已取得目前位置'},e=>$('status').textContent='無法取得定位，請確認瀏覽器定位權限')});
+// 若起點是 GPS 座標，直接使用，避免送出反查請求。
+const oldGeocode=geocode;geocode=async function(q){const m=q.match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/);return m?{lat:+m[1],lon:+m[2],name:'目前位置'}:oldGeocode(q)};
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+</script>
+</body>
+</html>

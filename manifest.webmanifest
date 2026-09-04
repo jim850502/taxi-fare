@@ -1,0 +1,10 @@
+{
+  "name":"車資判斷助手",
+  "short_name":"車資判斷",
+  "start_url":"./",
+  "display":"standalone",
+  "background_color":"#f3f4f6",
+  "theme_color":"#111827",
+  "lang":"zh-Hant",
+  "description":"免安裝的台灣計程車車資判斷工具"
+}
