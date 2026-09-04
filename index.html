@@ -90,9 +90,9 @@ async function route(a,b){const url=`https://router.project-osrm.org/route/v1/dr
 function calculate(km,mins,label){
   const wait=Math.max(0,+$('wait').value||0), pickup=Math.max(0,+$('pickup').value||0), night=$('night').checked;
   const meter=85+Math.max(0,Math.ceil((km-1.25)/.2))*5+Math.ceil(wait)*5+(night?20:0);
-  // 第一版模型依先前提供的實際訂單樣本估算；平台即時價格可能因需求與加成大幅變動。
-  const platform=Math.max(85,55+24.2*km+1.45*mins)+(night?20:0);
-  const driver=platform*.75, totalKm=km+pickup, totalMins=mins+pickup/25*60;
+  // 依使用者提供的短、中、長程實際司機收入樣本直接回歸，避免固定 25% 抽成造成長程低估。
+  const driver=Math.max(64,40.039+18.727*km+2.280*mins)+(night?20:0);
+  const platform=driver/.75, totalKm=km+pickup, totalMins=mins+pickup/25*60;
   const perKm=driver/Math.max(totalKm,.1), hourly=driver/Math.max(totalMins/60,.1);
   $('meterFare').textContent=money(meter);$('platformFare').textContent=money(platform);$('driverFare').textContent=money(driver);$('perKm').textContent=money(perKm);$('hourly').textContent=money(hourly);
   $('routeText').textContent=`${label}｜${km.toFixed(1)} 公里・約 ${Math.round(mins)} 分鐘${pickup?`・接客 ${pickup.toFixed(1)} 公里`:''}`;
