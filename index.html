@@ -146,7 +146,7 @@ function parseOcr(text){
   const normalizedLines=clean.split(/\r?\n/).map(line=>line.replace(/\s+/g,'')).filter(Boolean);
   const distances=[...compact.matchAll(/(\d+(?:\.\d+)?)\s*(?:公里|km)/gi)].map(m=>+m[1]).filter(n=>n>.1&&n<500);
   const time=compact.match(/(\d+)分鐘(?:(\d+)秒)?/), dollars=[...clean.matchAll(/\$\s*(-?\d+(?:\.\d+)?)/g)].map(m=>+m[1]).filter(Number.isFinite), largeNumbers=[...clean.matchAll(/(?:^|\s)(\d{2,5}(?:\.00)?)(?=\s|$)/gm)].map(m=>+m[1]).filter(n=>n>=50&&n<=10000);
-  const labeled=(labels)=>{const re=new RegExp(`(?:${labels})[^\\d$-]{0,25}-?\\$?(\\d+(?:\\.\\d+)?)`,'i');return normalizedLines.map(line=>line.match(re)).filter(Boolean).map(m=>+m[1]).filter(n=>n>0&&n<10000)};
+  const labeled=(labels)=>{const re=new RegExp(`(?:${labels})[^\\d$-]{0,25}-?\\$?(\\d+(?:\\.\\d+)?)`,'i');return normalizedLines.map(line=>line.match(re)).filter(Boolean).map(m=>{let n=+m[1];if(n>=10000&&n<=999999&&/^\\d+00$/.test(m[1]))n/=100;return n}).filter(n=>n>0&&n<10000)};
   const balance=labeled('行程餘額|行程余額|最終餘額'), net=labeled('您的[費賣]用明細|實拿金額|司機實拿|您的收入|淨收入'), gross=labeled('行程費用|行程費用|車資'), fees=labeled('服務[費賣](?!稅金)|Uber\\s*fee'), tolls=labeled('過路費|通行費|toll'), tips=labeled('小費|tip'), adjustments=labeled('退款|行程調整|其他調整');
   let fee=fees.length?Math.max(...fees):0,estimatedMoney=false;const grossFare=gross.at(-1)||0, tip=tips.at(-1)||0, adjustment=adjustments.at(-1)||0;
   let actual=balance.at(-1)||net.at(-1)||0;
