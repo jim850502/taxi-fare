@@ -79,7 +79,7 @@
 <section class="card" id="batchSection">
 <h2 class="section-title">📚 多趟批次截圖辨識</h2>
 <p class="hint">一次選取多張「行程詳細資訊」截圖，每張視為一趟。程式會按檔名排序，辨識明細並比較這趟實拿是否落在一般合理範圍。</p>
-<label for="batchFiles">批次選圖（可一次多選）</label><input id="batchFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+<label for="batchFiles">加入批次照片（可重複選取累加）</label><input id="batchFiles" type="file" accept="image/*" multiple><p class="hint">手機若一次只顯示 2 張，可再次按「加入批次照片」；已選照片會保留並繼續累加。</p>
 <div class="batch-actions"><button id="batchStart" class="primary">開始辨識全部行程</button><button id="batchClear" type="button">清除圖片</button><button id="batchStop" type="button" hidden>停止（保留完成結果）</button></div>
 <div id="batchQueue" class="thumb-list" aria-live="polite"></div>
 <progress id="batchProgress" value="0" max="1" style="width:100%;margin-top:12px" aria-label="批次進度"></progress>
@@ -164,7 +164,7 @@ $('routeBtn').addEventListener('click',async()=>{const f=$('from').value.trim(),
 $('manualBtn').addEventListener('click',()=>{const km=+$('km').value,mins=+$('mins').value;if(!(km>0)||!(mins>0)){alert('請輸入有效的距離與時間');return}calculate(km,mins,'手動估算')});
 $('analysisBtn').addEventListener('click',()=>{const km=+$('km').value,mins=+$('mins').value;if(km>0&&mins>0)calculate(km,mins,$('routeText').textContent.split('｜')[0]||'更新分析')});
 const receiptInput=$('receiptImages');
-receiptInput.addEventListener('change',()=>{const selected=[...receiptInput.files],files=selected.slice(0,2),box=$('previewGrid');box.replaceChildren();files.forEach(file=>{const img=document.createElement('img');img.src=URL.createObjectURL(file);img.alt='Uber 截圖預覽';box.appendChild(img)});$('ocrStatus').textContent=selected.length>2?`你選了 ${selected.length} 張；單趟模式只會處理前 2 張。多趟請使用下方「批次選圖」。`:files.length?`已選擇 ${files.length} 張，按「辨識這一趟」開始。`:''});
+receiptInput.addEventListener('change',()=>{const selected=[...receiptInput.files],files=selected.slice(0,2),box=$('previewGrid');box.replaceChildren();files.forEach(file=>{const img=document.createElement('img');img.src=URL.createObjectURL(file);img.alt='Uber 截圖預覽';box.appendChild(img)});$('ocrStatus').textContent=selected.length>2?`你選了 ${selected.length} 張；單趟模式只會處理前 2 張。多趟請使用下方「加入批次照片」。`:files.length?`已選擇 ${files.length} 張，按「辨識這一趟」開始。`:''});
 function parseOcr(text){
   const clean=text.replace(/,/g,'').replace(/[ＯO]/g,'0').replace(/[＄]/g,'$');
   const compact=clean.replace(/\s+/g,'');
@@ -274,7 +274,7 @@ function renderResults(){
   box.append(d)
  })
 }
-$('batchFiles').onchange=()=>{if(running)return;files=[...$('batchFiles').files].filter(f=>f.type.startsWith('image/')).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'}));jobs=[];renderQueue();renderResults();summary()};
+$('#batchFiles').onchange=()=>{if(running)return;const incoming=[...$('batchFiles').files].filter(f=>f.type.startsWith('image/')),seen=new Set(files.map(f=>`${f.name}|${f.size}|${f.lastModified}`));incoming.forEach(f=>{const key=`${f.name}|${f.size}|${f.lastModified}`;if(!seen.has(key)){files.push(f);seen.add(key)}});files.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'}));$('batchFiles').value='';jobs=[];renderQueue();renderResults();summary()};
 $('batchClear').onclick=()=>{if(running)return;files=[];jobs=[];$('batchFiles').value='';renderQueue();renderResults();summary()};
 $('batchFilter').onchange=renderResults;
 $('batchStop').onclick=()=>{stopped=true;$('batchStop').disabled=true;$('batchStatus').textContent='正在停止，保留已完成結果…';worker?.terminate().catch(()=>{})};
