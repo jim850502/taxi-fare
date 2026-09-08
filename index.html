@@ -54,11 +54,11 @@
   </section>
 
   <section class="card">
-    <h2 class="section-title">📷 Uber 截圖驗證</h2>
-    <p class="hint">可選「行程詳細資訊」及「費用明細」1–2 張。圖片只在你的裝置內辨識；首次需下載辨識模型，可能需要一點時間。</p>
-    <label for="receiptImages">選擇 Uber 截圖</label><input id="receiptImages" type="file" accept="image/*" multiple>
+    <h2 class="section-title">📷 單趟截圖驗證（最多 2 張）</h2>
+    <p class="hint">同一趟最多選 2 張：「行程詳細資訊」＋「費用明細」。若要辨識多趟，請使用下方「多趟批次截圖辨識」。圖片只在你的裝置內辨識。</p>
+    <label for="receiptImages">選擇同一趟截圖（最多 2 張）</label><input id="receiptImages" type="file" accept="image/*" multiple>
     <div class="preview-grid" id="previewGrid"></div>
-    <button class="secondary" id="ocrBtn">辨識截圖</button>
+    <button class="secondary" id="ocrBtn">辨識這一趟</button>
     <div class="progress" id="ocrProgress" hidden><i id="ocrBar"></i></div><div class="status" id="ocrStatus" role="status"></div>
     <div class="ocr-fields" id="ocrFields">
       <p class="hint">請先確認辨識數字，若有錯可直接修改：</p>
@@ -74,10 +74,10 @@
 
 
 <section class="card" id="batchSection">
-<h2 class="section-title">📚 批次截圖辨識</h2>
+<h2 class="section-title">📚 多趟批次截圖辨識</h2>
 <p class="hint">一次選取多張「行程詳細資訊」截圖，每張視為一趟。程式會按檔名排序，辨識明細並比較這趟實拿是否落在一般合理範圍。</p>
-<label for="batchFiles">選擇多趟截圖</label><input id="batchFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple>
-<div class="batch-actions"><button id="batchStart" class="primary">開始批次辨識</button><button id="batchClear" type="button">清除圖片</button><button id="batchStop" type="button" hidden>停止（保留完成結果）</button></div>
+<label for="batchFiles">批次選圖（可一次多選）</label><input id="batchFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+<div class="batch-actions"><button id="batchStart" class="primary">開始辨識全部行程</button><button id="batchClear" type="button">清除圖片</button><button id="batchStop" type="button" hidden>停止（保留完成結果）</button></div>
 <div id="batchQueue" class="thumb-list" aria-live="polite"></div>
 <progress id="batchProgress" value="0" max="1" style="width:100%;margin-top:12px" aria-label="批次進度"></progress>
 <p id="batchStatus" class="status" role="status" aria-live="polite">尚未選擇圖片</p>
@@ -161,7 +161,7 @@ $('routeBtn').addEventListener('click',async()=>{const f=$('from').value.trim(),
 $('manualBtn').addEventListener('click',()=>{const km=+$('km').value,mins=+$('mins').value;if(!(km>0)||!(mins>0)){alert('請輸入有效的距離與時間');return}calculate(km,mins,'手動估算')});
 $('analysisBtn').addEventListener('click',()=>{const km=+$('km').value,mins=+$('mins').value;if(km>0&&mins>0)calculate(km,mins,$('routeText').textContent.split('｜')[0]||'更新分析')});
 const receiptInput=$('receiptImages');
-receiptInput.addEventListener('change',()=>{const files=[...receiptInput.files].slice(0,2),box=$('previewGrid');box.replaceChildren();files.forEach(file=>{const img=document.createElement('img');img.src=URL.createObjectURL(file);img.alt='Uber 截圖預覽';box.appendChild(img)});$('ocrStatus').textContent=files.length?`已選擇 ${files.length} 張，按「辨識截圖」開始。`:''});
+receiptInput.addEventListener('change',()=>{const selected=[...receiptInput.files],files=selected.slice(0,2),box=$('previewGrid');box.replaceChildren();files.forEach(file=>{const img=document.createElement('img');img.src=URL.createObjectURL(file);img.alt='Uber 截圖預覽';box.appendChild(img)});$('ocrStatus').textContent=selected.length>2?`你選了 ${selected.length} 張；單趟模式只會處理前 2 張。多趟請使用下方「批次選圖」。`:files.length?`已選擇 ${files.length} 張，按「辨識這一趟」開始。`:''});
 function parseOcr(text){
   const clean=text.replace(/,/g,'').replace(/[ＯO]/g,'0').replace(/[＄]/g,'$');
   const compact=clean.replace(/\s+/g,'');
