@@ -18,7 +18,8 @@
     details{margin-top:10px}summary{cursor:pointer;font-weight:800}.foot{color:var(--muted);font-size:12px;line-height:1.55;text-align:center;margin-top:16px}.switch{display:flex;align-items:center;gap:8px;margin-top:12px}.switch input{width:20px;min-height:20px}.switch label{margin:0;font-weight:600}
     dialog{width:min(600px,calc(100% - 24px));border:0;border-radius:20px;padding:0;box-shadow:0 24px 80px rgba(0,0,0,.28)}dialog::backdrop{background:rgba(17,24,39,.55)}.picker{padding:18px}.picker h2{font-size:19px;margin:0 0 6px}.picker p{color:var(--muted);font-size:14px;margin:0 0 12px}.choices{display:grid;gap:8px}.choice{text-align:left;height:auto;min-height:54px;font-weight:650;line-height:1.4}.choice small{display:block;color:var(--muted);font-weight:500}.cancel{margin-top:12px;background:#f3f4f6}
     .section-title{font-size:18px;margin:0 0 5px}.hint{font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 10px}.preview-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}.preview-grid img{width:100%;height:150px;object-fit:contain;border:1px solid var(--line);border-radius:12px;background:#f9fafb}.progress{height:8px;background:#e5e7eb;border-radius:99px;overflow:hidden;margin-top:10px}.progress i{display:block;width:0;height:100%;background:var(--blue);transition:width .2s}.ocr-fields{display:none}.ocr-fields.show{display:block}.compare{margin-top:12px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:14px;padding:13px;line-height:1.65}.compare strong{font-size:20px}
-    @media(max-width:500px){.row,.big-grid{grid-template-columns:1fr}.detail{grid-template-columns:1fr 1fr}.hero h1{font-size:22px}}
+    .batch-actions{display:grid;grid-template-columns:2fr 1fr;gap:8px}.batch-actions .primary{margin-top:0}.thumb-list{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.thumb-item{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#f9fafb}.thumb-item img{display:block;width:100%;height:130px;object-fit:contain}.thumb-item span{display:block;padding:6px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.thumb-item button{position:absolute;right:5px;top:5px;width:34px;min-height:34px;padding:0;border-radius:50%;background:rgba(255,255,255,.94);color:var(--red)}.result-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.result-preview{display:block;max-width:100%;max-height:700px;margin:10px auto;border-radius:12px;border:1px solid var(--line)}.ocr-raw{white-space:pre-wrap;overflow-wrap:anywhere;background:#f9fafb;padding:10px;border-radius:10px;font-size:12px}
+    @media(max-width:500px){.thumb-list{grid-template-columns:repeat(2,1fr)}.row,.big-grid{grid-template-columns:1fr}.detail{grid-template-columns:1fr 1fr}.hero h1{font-size:22px}}
   </style>
 </head>
 <body>
@@ -73,27 +74,15 @@
 
 
 <section class="card" id="batchSection">
-<h2 class="section-title">📚 批次截圖驗證</h2>
-<p class="hint">依選取順序逐趟辨識，不會合併不同趟。兩張一趟時，請將同趟的行程與費用明細排在一起。圖片只在本機辨識；結果仍需人工確認。</p>
-<label for="batchFiles">選擇多趟截圖</label><input id="batchFiles" type="file" accept="image/*" multiple>
-<label for="batchGroup">每趟圖片數</label><select id="batchGroup"><option value="1">一張一趟</option><option value="2">相鄰兩張一趟</option></select>
-<div id="batchQueue" class="hint"></div>
-<button id="batchStart" class="primary">開始批次辨識</button><button id="batchStop" hidden>停止（保留完成結果）</button>
+<h2 class="section-title">📚 批次截圖辨識</h2>
+<p class="hint">一次選取多張「行程詳細資訊」截圖，每張視為一趟。程式會按檔名排序，分別辨識時間、距離、行程費用、調整、服務費與司機實拿。</p>
+<label for="batchFiles">選擇多趟截圖</label><input id="batchFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+<div class="batch-actions"><button id="batchStart" class="primary">開始批次辨識</button><button id="batchClear" type="button">清除圖片</button><button id="batchStop" type="button" hidden>停止（保留完成結果）</button></div>
+<div id="batchQueue" class="thumb-list" aria-live="polite"></div>
 <progress id="batchProgress" value="0" max="1" style="width:100%;margin-top:12px" aria-label="批次進度"></progress>
-<p id="batchStatus" role="status" aria-live="polite">尚未選擇圖片</p>
-<p class="hint">批次沿用原有明細與估價比較公式。為避免中途等待地址選擇，缺少距離／時間時列為待確認，不自動查路線。</p>
-<label for="batchFilter">結果篩選</label><select id="batchFilter"><option value="">全部</option><option>完成</option><option>待確認</option><option>異常</option><option>失敗</option></select>
+<p id="batchStatus" class="status" role="status" aria-live="polite">尚未選擇圖片</p>
+<label for="batchFilter">結果篩選</label><select id="batchFilter"><option value="">全部</option><option>完成</option><option>待確認</option><option>失敗</option></select>
 <div id="batchResults"></div>
-    <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
-    <h3 class="section-title">🎥 錄影批次辨識</h3>
-    <p class="hint">上傳逐趟查看「行程詳細資訊」的螢幕錄影。程式會略過滑動畫面、擷取停留畫面，再辨識每趟的「您的費用明細」。影片只在你的裝置內處理。</p>
-    <label for="videoFile">選擇螢幕錄影</label><input id="videoFile" type="file" accept="video/*">
-    <button class="primary" id="videoStart">分析影片</button><button id="videoStop" hidden>停止（保留已完成結果）</button>
-    <progress id="videoProgress" value="0" max="1" style="width:100%;margin-top:12px" aria-label="影片分析進度"></progress>
-    <p class="status" id="videoStatus" role="status" aria-live="polite">尚未選擇影片</p>
-    <video id="videoReader" muted playsinline hidden></video><canvas id="videoCanvas" hidden></canvas>
-    <div id="videoResults"></div>
-
 </section>
 
   <section class="card">
@@ -178,12 +167,14 @@ function parseOcr(text){
   const compact=clean.replace(/\s+/g,'');
   const normalizedLines=clean.split(/\r?\n/).map(line=>line.replace(/\s+/g,'')).filter(Boolean);
   const distances=[...compact.matchAll(/(\d+(?:\.\d+)?)\s*(?:公里|km)/gi)].map(m=>+m[1]).filter(n=>n>.1&&n<500);
-  const time=compact.match(/(\d+)分鐘(?:(\d+)秒)?/), dollars=[...clean.matchAll(/\$\s*(-?\d+(?:\.\d+)?)/g)].map(m=>+m[1]).filter(Number.isFinite), largeNumbers=[...clean.matchAll(/(?:^|\s)(\d{2,5}(?:\.00)?)(?=\s|$)/gm)].map(m=>+m[1]).filter(n=>n>=50&&n<=10000);
-  const labeled=(labels)=>{const corpus=normalizedLines.join(' '),re=new RegExp(`(?:${labels})[^\\d$-]{0,35}-?\\$?(\\d+(?:\\.\\d+)?)`,'gi'),values=[];for(const m of corpus.matchAll(re)){let n=+m[1];if(n>=10000&&n<=999999&&/^\\d+00$/.test(m[1]))n/=100;if(n>0&&n<10000)values.push(n)}return values};
-  const balance=labeled('行程餘額|行程余額|最終餘額'), net=labeled('您的[費賣]用明細|實拿金額|司機實拿|您的收入|淨收入'), gross=labeled('行程費用|行程費用|車資'), fees=labeled('服務[費賣](?!稅金)|Uber\\s*fee'), tolls=labeled('過路費|通行費|toll'), tips=labeled('小費|tip'), adjustments=labeled('退款|行程調整|其他調整');
-  let fee=fees.length?Math.max(...fees):0,estimatedMoney=false;const grossFare=gross.at(-1)||0, tip=tips.at(-1)||0, adjustment=adjustments.at(-1)||0;
+  const time=compact.match(/(\d{1,3})分(?:鐘|锺|鍾)?(?:(\d{1,2})秒)?/), dollars=[...clean.matchAll(/\$\s*(-?\d+(?:\.\d+)?)/g)].map(m=>+m[1]).filter(Number.isFinite), largeNumbers=[...clean.matchAll(/(?:^|\s)(\d{2,5}(?:\.00)?)(?=\s|$)/gm)].map(m=>+m[1]).filter(n=>n>=50&&n<=10000);
+  const labeled=(labels)=>{const corpus=normalizedLines.join(' '),re=new RegExp(`(?:${labels})[^\\d$-]{0,35}-?\\$?(\\d+(?:\\.\\d+)?)`,'gi'),values=[];for(const m of corpus.matchAll(re)){let n=+m[1];if(n>=10000&&n<=999999&&/^\d+00$/.test(m[1]))n/=100;if(n>0&&n<10000)values.push(n)}return values};
+  const balance=labeled('行程餘額|行程余額|最終餘額'), net=labeled('您的[費费賣]用明[細细]|實拿金額|司機實拿|您的收入|淨收入'), gross=labeled('行程費用|行程費用|車資'), fees=labeled('服務[費费賣買](?!稅金)|Uber\\s*fee'), tolls=labeled('過路費|通行費|toll'), tips=labeled('小費|tip'), adjustments=labeled('退款|行程調整|其他調整|調整');
+  let fee=fees.length?Math.max(...fees):0,estimatedMoney=false,grossFare=gross.at(-1)||0;const tip=tips.at(-1)||0, adjustment=adjustments.at(-1)||0;
   let actual=balance.at(-1)||net.at(-1)||0;
-  if(!actual&&grossFare&&fee&&grossFare>fee)actual=grossFare-fee+tip;
+  if(!actual&&grossFare&&fee&&grossFare>fee)actual=grossFare-fee+tip+adjustment;
+  // 有調整但只辨識到上層總額時，從實拿與服務費還原未含調整的行程費用。
+  if(adjustment&&gross.length===1&&actual&&fee&&Math.abs(grossFare-fee+tip-actual)<=2)grossFare=Math.max(0,grossFare-adjustment);
   if(!actual&&grossFare&&!fee){fee=Math.round(grossFare*.25);actual=grossFare-fee+tip+adjustment;estimatedMoney=true}
   // 沒有明確的實拿或行程費用標籤時不要猜最後一個金額，避免把日期、點數或其他費用誤當實拿。
   if(!actual&&!grossFare){const positive=dollars.filter(n=>n>0&&n<10000),decimalMoney=[...new Set([...clean.matchAll(/(?:^|\s|[$S])\s*(\d{2,4})[.,]00\b/gm)].map(m=>+m[1]).filter(n=>n>=50&&n<10000))];actual=positive.length===1?positive[0]:(decimalMoney.length===1?decimalMoney[0]:'')}
@@ -217,134 +208,64 @@ if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch
 
 <script>
 (()=>{
-let jobs=[],running=false,stopped=false,activeWorker=null;
-const fields=[['km','距離（公里）'],['mins','時間（分鐘）'],['actual','司機實拿'],['gross','行程費用'],['fee','服務費'],['tip','小費'],['adjustment','退款／調整'],['toll','過路費']];
-function assess(p){
- if(!(Number(p.km)>0&&Number(p.mins)>0&&Number(p.actual)>0)||p.estimatedMoney)return {status:'待確認',note:'距離、時間或實拿缺漏，或含推估金額；請核對原圖。'};
- const expected=Math.max(64,40.039+18.727*p.km+2.280*p.mins),comparable=Math.max(0,p.actual-(+p.toll||0)-(+p.tip||0)),diff=comparable-expected;
- const complete=p.gross!==''&&p.fee!==''&&Number(p.gross)>0;
- const delta=complete?p.actual-(p.gross-p.fee+(+p.tip||0)+(+p.adjustment||0)):null;
- return {status:delta!==null&&Math.abs(delta)>1?'異常':complete?'完成':'待確認',
- note:'一般基準 '+money(expected)+'；可比較實拿 '+money(comparable)+'；差額 '+(diff>=0?'+':'−')+money(Math.abs(diff))+'（'+(diff/expected*100).toFixed(1)+'%）。'+(delta===null?'明細不足，無法核對加減。':'明細加減差額 '+(delta>=0?'+':'−')+money(Math.abs(delta))+'。')+' 行情差異不代表計價錯誤。'};
+let files=[],jobs=[],running=false,stopped=false,worker=null,thumbUrls=[];
+const fields=[['km','距離（公里）'],['mins','時間（分鐘）'],['gross','行程費用'],['adjustment','調整'],['fee','服務費'],['actual','司機實拿']];
+function releaseThumbs(){thumbUrls.forEach(URL.revokeObjectURL);thumbUrls=[]}
+function loadImage(file){return new Promise((resolve,reject)=>{const img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{URL.revokeObjectURL(url);resolve(img)};img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('圖片無法讀取'))};img.src=url})}
+function cropForOcr(img,start,end){
+ const sourceY=Math.round(img.naturalHeight*start),sourceH=Math.round(img.naturalHeight*(end-start)),scale=Math.min(1.45,1100/img.naturalWidth),canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
+ canvas.width=Math.round(img.naturalWidth*scale);canvas.height=Math.round(sourceH*scale);ctx.drawImage(img,0,sourceY,img.naturalWidth,sourceH,0,0,canvas.width,canvas.height);
+ const data=ctx.getImageData(0,0,canvas.width,canvas.height);for(let i=0;i<data.data.length;i+=4){const y=.299*data.data[i]+.587*data.data[i+1]+.114*data.data[i+2],v=y>205?255:y<85?0:Math.max(0,Math.min(255,(y-128)*1.45+128));data.data[i]=data.data[i+1]=data.data[i+2]=v}ctx.putImageData(data,0,0);return canvas
+}
+async function recognizeTrip(file,index){
+ const img=await loadImage(file),top=cropForOcr(img,.095,.245),fare=cropForOcr(img,.365,.775);
+ await worker.setParameters({tessedit_pageseg_mode:6,preserve_interword_spaces:'1'});
+ const header=await worker.recognize(top),details=await worker.recognize(fare);
+ top.width=top.height=fare.width=fare.height=1;
+ const text=header.data.text+'\n--- 費用明細 ---\n'+details.data.text,p=parseOcr(text),compact=text.replace(/\s+/g,'');
+ const explicit=/您的[費费賣]用明[細细]/.test(compact),valid=+p.km>0&&+p.mins>0&&+p.actual>0,completeMoney=+p.gross>0&&+p.fee>0;
+ if(!p.actual&&completeMoney){p.actual=Math.max(0,+p.gross+(+p.adjustment||0)-+p.fee+(+p.tip||0));p.calculatedActual=true}
+ const delta=completeMoney&&+p.actual>0?(+p.actual-(+p.gross+(+p.adjustment||0)-+p.fee+(+p.tip||0))):null;
+ return{file,p,text,explicit,status:valid&&explicit&&delta!==null&&Math.abs(delta)<=2?'完成':'待確認',note:!valid?'距離、時間或實拿尚未完整辨識':!explicit?'實拿由明細加減補算，請核對原圖':delta===null?'明細項目不足，請核對原圖':Math.abs(delta)>2?'明細加減不一致，請核對原圖':'明細加減一致',delta}
+}
+function renderQueue(){
+ releaseThumbs();const box=$('batchQueue');box.replaceChildren();
+ if(!files.length){box.textContent='尚未載入圖片';return}
+ files.forEach((file,i)=>{const item=document.createElement('div');item.className='thumb-item';const img=document.createElement('img'),url=URL.createObjectURL(file);thumbUrls.push(url);img.src=url;img.alt='第 '+(i+1)+' 張：'+file.name;const meta=document.createElement('span');meta.textContent=(i+1)+'. '+file.name;const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.setAttribute('aria-label','移除 '+file.name);remove.onclick=()=>{if(running)return;files.splice(i,1);jobs=[];renderQueue();renderResults();summary()};item.append(img,meta,remove);box.append(item)})
 }
 function summary(){
- const counts={};jobs.forEach(j=>counts[j.status]=(counts[j.status]||0)+1);
- $('batchStatus').textContent=(running?'處理中':stopped?'已停止':'批次結果')+'：'+jobs.filter(j=>!['待處理','辨識中'].includes(j.status)).length+'/'+jobs.length+' 趟；'+Object.entries(counts).map(([k,v])=>k+' '+v).join('、');
+ if(running)return;
+ const done=jobs.filter(j=>j.status==='完成').length,review=jobs.filter(j=>j.status==='待確認').length,failed=jobs.filter(j=>j.status==='失敗').length;
+ $('batchStatus').textContent=jobs.length?'批次結果：完成 '+done+'、待確認 '+review+'、失敗 '+failed+'，共 '+jobs.length+' 趟':files.length?'已載入 '+files.length+' 張，每張視為一趟。':'尚未選擇圖片'
 }
-function render(){
+function renderResults(){
  const box=$('batchResults');box.replaceChildren();
  jobs.forEach((j,i)=>{
- if($('batchFilter').value&&j.status!==$('batchFilter').value)return;
- const d=document.createElement('details'),s=document.createElement('summary');s.textContent=(i+1)+'. '+j.files.map(f=>f.name).join(' ＋ ')+' — '+j.status;d.append(s);
- const note=document.createElement('p');note.textContent=j.note||'';d.append(note);
- // Load previews only when expanded, and release them when collapsed.
- d.addEventListener('toggle',()=>{if(d.open&&!d.querySelector('.preview-grid')){const grid=document.createElement('div');grid.className='preview-grid';j.files.forEach(f=>{const img=document.createElement('img');img.src=URL.createObjectURL(f);img.alt=f.name;img.onload=()=>URL.revokeObjectURL(img.src);grid.append(img)});d.append(grid)}else if(!d.open)d.querySelector('.preview-grid')?.remove()});
- if(j.p){const form=document.createElement('div');form.className='row';fields.forEach(([key,label])=>{const wrap=document.createElement('label');wrap.textContent=label;const input=document.createElement('input');input.type='number';input.step='0.01';input.value=j.p[key]??'';input.disabled=running;input.addEventListener('input',()=>{j.p[key]=input.value===''?'':Number(input.value)});wrap.append(input);form.append(wrap)});d.append(form);
- const b=document.createElement('button');b.textContent='已核對數字，重新比較';b.disabled=running;b.onclick=()=>{j.p.estimatedMoney=false;Object.assign(j,assess(j.p));render();summary()};d.append(b);}
- if(j.text){const pre=document.createElement('pre');pre.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere';pre.textContent=j.text;d.append(pre)}
- box.append(d);
- });
+  if($('batchFilter').value&&j.status!==$('batchFilter').value)return;
+  const d=document.createElement('details'),s=document.createElement('summary');s.textContent=(i+1)+'. '+j.file.name+' — '+j.status+(j.p?.actual?'，實拿 '+money(j.p.actual):'');d.append(s);
+  const note=document.createElement('p');note.textContent=j.note||'';d.append(note);
+  if(j.p){const grid=document.createElement('div');grid.className='result-grid';fields.forEach(([key,label])=>{const wrap=document.createElement('label');wrap.textContent=label;const input=document.createElement('input');input.type='number';input.step='0.01';input.value=j.p[key]??'';input.disabled=running;input.oninput=()=>{j.p[key]=input.value===''?'':+input.value};wrap.append(input);grid.append(wrap)});d.append(grid);
+   const verify=document.createElement('button');verify.type='button';verify.textContent='重新核對這筆';verify.disabled=running;verify.onclick=()=>{const p=j.p,valid=+p.km>0&&+p.mins>0&&+p.actual>0,delta=+p.gross>0&&+p.fee>0?(+p.actual-(+p.gross+(+p.adjustment||0)-+p.fee+(+p.tip||0))):null;j.delta=delta;j.status=valid&&delta!==null&&Math.abs(delta)<=2?'完成':'待確認';j.note=delta===null?'明細項目不足，請核對原圖':Math.abs(delta)<=2?'明細加減一致':'明細加減不一致，請核對原圖';renderResults();summary()};d.append(verify)}
+  d.addEventListener('toggle',()=>{if(d.open&&!d.querySelector('.result-preview')){const img=document.createElement('img'),url=URL.createObjectURL(j.file);img.className='result-preview';img.src=url;img.alt=j.file.name;img.onload=()=>URL.revokeObjectURL(url);d.append(img);if(j.text){const pre=document.createElement('pre');pre.className='ocr-raw';pre.textContent=j.text;d.append(pre)}}else if(!d.open){d.querySelector('.result-preview')?.remove();d.querySelector('.ocr-raw')?.remove()}});
+  box.append(d)
+ })
 }
-function queue(){
- if(running)return;
- const files=[...$('batchFiles').files],n=+$('batchGroup').value;jobs=[];stopped=false;
- for(let i=0;i<files.length;i+=n)jobs.push({files:files.slice(i,i+n),status:'待處理'});
- $('batchQueue').textContent=jobs.map((j,i)=>(i+1)+'. '+j.files.map(f=>f.name).join(' ＋ ')).join(' ／ ');
- $('batchProgress').value=0;$('batchProgress').max=Math.max(1,jobs.length);render();summary();
-}
-$('batchFiles').onchange=queue;$('batchGroup').onchange=queue;$('batchFilter').onchange=render;
-$('batchStop').onclick=()=>{stopped=true;$('batchStop').disabled=true;$('batchStatus').textContent='正在停止，保留已完成結果…';if(activeWorker)activeWorker.terminate().catch(()=>{})};
-async function timed(promise,ms){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error('辨識逾時，請重試或縮小圖片')),ms))])}finally{clearTimeout(timer)}}
+$('batchFiles').onchange=()=>{if(running)return;files=[...$('batchFiles').files].filter(f=>f.type.startsWith('image/')).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'}));jobs=[];renderQueue();renderResults();summary()};
+$('batchClear').onclick=()=>{if(running)return;files=[];jobs=[];$('batchFiles').value='';renderQueue();renderResults();summary()};
+$('batchFilter').onchange=renderResults;
+$('batchStop').onclick=()=>{stopped=true;$('batchStop').disabled=true;$('batchStatus').textContent='正在停止，保留已完成結果…';worker?.terminate().catch(()=>{})};
 $('batchStart').onclick=async()=>{
- if(running)return;
- if($('ocrBtn').disabled){$('batchStatus').textContent='單趟辨識尚未完成，請稍後再開始批次';return}
- if(!jobs.length){$('batchStatus').textContent='請先選擇圖片';return}
- if(!window.Tesseract){$('batchStatus').textContent='辨識元件未載入，請確認網路後重新整理';return}
- running=true;stopped=false;$('batchStart').disabled=true;$('ocrBtn').disabled=true;$('batchFiles').disabled=true;$('batchGroup').disabled=true;$('batchStop').hidden=false;$('batchStop').disabled=false;
- // Each run rebuilds its own results; no previous trip values can leak forward.
- jobs.forEach(j=>{j.status='待處理';delete j.p;delete j.text;delete j.note});render();
+ if(running)return;if(!files.length){$('batchStatus').textContent='請先選擇圖片';return}if(!window.Tesseract){$('batchStatus').textContent='辨識元件未載入，請確認網路後重新整理';return}
+ running=true;stopped=false;jobs=[];$('batchStart').disabled=$('batchClear').disabled=$('batchFiles').disabled=true;$('ocrBtn').disabled=true;$('batchStop').hidden=false;$('batchStop').disabled=false;$('batchProgress').max=files.length;$('batchProgress').value=0;renderQueue();
  try{
- for(let i=0;i<jobs.length&&!stopped;i++){
- const j=jobs[i];j.status='辨識中';summary();render();
- try{
- for(let k=0;k<j.files.length;k++){
- if(stopped)break;
- const f=j.files[k];if(!f.type.startsWith('image/'))throw new Error('不是可辨識的圖片');
- for(const lang of ['chi_tra+eng','eng']){
- if(stopped)break;
- // A worker per pass bounds failures and lets Stop terminate active recognition.
- const creation=Tesseract.createWorker(lang,1,{logger:m=>{if(!stopped)$('batchStatus').textContent='第 '+(i+1)+'/'+jobs.length+' 趟，第 '+(k+1)+' 張：'+(m.status==='recognizing text'?'辨識 '+Math.round(m.progress*100)+'%':'載入辨識模型…')}});
- let expired=false;
- creation.then(w=>{if(expired||stopped)w.terminate().catch(()=>{})}).catch(()=>{});
- try{activeWorker=await timed(creation,90000)}catch(e){expired=true;throw e}
- if(stopped)break;
- if(lang==='eng')await activeWorker.setParameters({tessedit_pageseg_mode:6});
- const r=await timed(activeWorker.recognize(f),90000);
- j.text=(j.text||'')+'\n'+r.data.text;
- await activeWorker.terminate();activeWorker=null;
- }
- }
- if(stopped){j.status='待處理';j.note='已停止，可重新執行';}
- else{j.p=parseOcr(j.text||'');Object.assign(j,assess(j.p));}
- }catch(e){j.status=stopped?'待處理':'失敗';j.note=stopped?'已停止':e.message||'圖片辨識失敗，已繼續下一趟';}
- finally{if(activeWorker){await activeWorker.terminate().catch(()=>{});activeWorker=null}}
- $('batchProgress').value=i+1;render();summary();
- }
- }finally{running=false;$('batchStart').disabled=false;$('ocrBtn').disabled=false;$('batchFiles').disabled=false;$('batchGroup').disabled=false;$('batchStop').hidden=true;render();summary()}
+  worker=await Tesseract.createWorker('chi_tra+eng',1,{logger:m=>{if(m.status==='recognizing text')$('batchStatus').textContent='正在辨識：'+Math.round(m.progress*100)+'%'}});
+  for(let i=0;i<files.length&&!stopped;i++){try{$('batchStatus').textContent='正在處理第 '+(i+1)+' / '+files.length+' 張：'+files[i].name;const job=await recognizeTrip(files[i],i);jobs.push(job)}catch(e){if(!stopped)jobs.push({file:files[i],status:'失敗',note:e.message||'辨識失敗，已繼續下一張'})}$('batchProgress').value=i+1;renderResults()}
+ }catch(e){if(!stopped)$('batchStatus').textContent='批次辨識無法啟動：'+(e.message||'請重新整理後再試')}
+ finally{if(worker){await worker.terminate().catch(()=>{});worker=null}running=false;$('batchStart').disabled=$('batchClear').disabled=$('batchFiles').disabled=false;$('ocrBtn').disabled=false;$('batchStop').hidden=true;renderQueue();renderResults();summary()}
 };
 })();
 </script>
 
-<script>
-(()=>{
-let stopped=false,worker=null,videoUrl='';
-const seek=(video,time)=>new Promise((resolve,reject)=>{const done=()=>{cleanup();resolve()},fail=()=>{cleanup();reject(new Error('無法讀取影片畫面'))},cleanup=()=>{video.removeEventListener('seeked',done);video.removeEventListener('error',fail)};video.addEventListener('seeked',done,{once:true});video.addEventListener('error',fail,{once:true});video.currentTime=Math.min(time,Math.max(0,video.duration-.05))});
-const metadata=video=>new Promise((resolve,reject)=>{if(video.readyState>=1)return resolve();video.onloadedmetadata=resolve;video.onerror=()=>reject(new Error('此影片格式無法讀取'))});
-function fingerprint(ctx,w,h){const data=ctx.getImageData(0,0,w,h).data,out=[];let sum=0;for(let i=0;i<data.length;i+=4)sum+=(data[i]+data[i+1]+data[i+2])/3;const avg=sum/(data.length/4);for(let i=0;i<data.length;i+=4)out.push(((data[i]+data[i+1]+data[i+2])/3)>avg?1:0);return out}
-function distance(a,b){if(!a||!b)return 999;let d=0;for(let i=0;i<a.length;i++)d+=a[i]!==b[i];return d/a.length*100}
-function makeFrame(video){
- const scale=Math.min(1,720/video.videoWidth),w=Math.round(video.videoWidth*scale),h=Math.round(video.videoHeight*scale*.72),canvas=$('videoCanvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
- canvas.width=w;canvas.height=h;ctx.drawImage(video,0,0,video.videoWidth,video.videoHeight*.72,0,0,w,h);
- const tiny=document.createElement('canvas'),tw=20,th=36;tiny.width=tw;tiny.height=th;const tc=tiny.getContext('2d',{willReadFrequently:true});tc.drawImage(canvas,0,0,tw,th);
- return {canvas,hash:fingerprint(tc,tw,th)};
-}
-function videoTrip(text,time){
- const p=parseOcr(text),hasLabels=/行程[費賣用]{1,2}|服務[費賣]|您的.{0,3}[費賣]用明細|trip\s*fare|service\s*fee|your\s*(?:earnings|fare)/i.test(text);
- if(!hasLabels||!(+p.actual>0||(+p.gross>0&&+p.fee>0)))return null;
- if(!p.actual&&p.gross&&p.fee)p.actual=Math.max(0,p.gross+(+p.adjustment||0)-p.fee+(+p.tip||0));
- const audit=p.gross&&p.fee&&p.actual?p.actual-(p.gross-p.fee+(+p.tip||0)+(+p.adjustment||0)):null;
- return {p,time,status:audit!==null&&Math.abs(audit)>2?'待確認':'完成',audit,text};
-}
-function renderTrips(trips){
- const box=$('videoResults');box.replaceChildren();
- trips.forEach((trip,i)=>{const d=document.createElement('details'),s=document.createElement('summary');s.textContent=(i+1)+'. '+Math.floor(trip.time/60)+':'+String(Math.round(trip.time%60)).padStart(2,'0')+' — 實拿 '+money(trip.p.actual)+'（'+trip.status+'）';d.append(s);
- const p=document.createElement('p');p.textContent='行程費用 '+(trip.p.gross?money(trip.p.gross):'未辨識')+'；調整 '+money(trip.p.adjustment||0)+'；服務費 '+(trip.p.fee?money(trip.p.fee):'未辨識')+'；您的費用明細 '+money(trip.p.actual)+(trip.audit===null?'。缺少明細項目，請核對。':'；核對差額 '+money(Math.abs(trip.audit))+'。');d.append(p);
- const pre=document.createElement('pre');pre.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere';pre.textContent=trip.text;d.append(pre);box.append(d)});
-}
-$('videoFile').onchange=()=>{const f=$('videoFile').files[0];$('videoStatus').textContent=f?'已選擇 '+f.name+'，按「分析影片」開始。':'尚未選擇影片'};
-$('videoStop').onclick=()=>{stopped=true;$('videoStop').disabled=true;$('videoStatus').textContent='正在停止，保留已完成結果…';worker?.terminate().catch(()=>{})};
-$('videoStart').onclick=async()=>{
- const file=$('videoFile').files[0];if(!file){$('videoStatus').textContent='請先選擇影片';return}if(!window.Tesseract){$('videoStatus').textContent='辨識元件未載入，請確認網路後重新整理';return}
- stopped=false;const button=$('videoStart'),video=$('videoReader');button.disabled=true;$('videoFile').disabled=true;$('videoStop').hidden=false;$('videoStop').disabled=false;$('videoResults').replaceChildren();
- try{
-  if(videoUrl)URL.revokeObjectURL(videoUrl);videoUrl=URL.createObjectURL(file);video.src=videoUrl;await metadata(video);
-  if(!isFinite(video.duration)||video.duration<=0)throw new Error('無法取得影片長度');
-  const step=Math.max(1,video.duration/120),candidates=[];let previous=null;
-  // 第一階段每約一秒檢查一次；只有連續兩格相近才視為停留畫面。
-  for(let t=0;t<video.duration&&!stopped;t+=step){await seek(video,t);const frame=makeFrame(video),movement=distance(previous,frame.hash);previous=frame.hash;if(movement<3.2&&candidates.every(x=>distance(x.hash,frame.hash)>5)){const snapshot=document.createElement('canvas');snapshot.width=frame.canvas.width;snapshot.height=frame.canvas.height;snapshot.getContext('2d').drawImage(frame.canvas,0,0);candidates.push({time:t,canvas:snapshot,hash:frame.hash})}$('videoProgress').value=t;$('videoProgress').max=video.duration*2;$('videoStatus').textContent='正在找停留畫面：'+Math.round(t)+' / '+Math.round(video.duration)+' 秒'}
-  if(stopped)return;
-  if(!candidates.length)throw new Error('沒有找到清晰停留畫面；請在每趟明細停留約 2 秒');
-  // 限制辨識數量，長影片也不會無止境處理；保留時間分布。
-  const selected=candidates.length<=24?candidates:Array.from({length:24},(_,i)=>candidates[Math.round(i*(candidates.length-1)/23)]);
-  worker=await Tesseract.createWorker('chi_tra+eng',1,{logger:m=>{if(m.status==='recognizing text')$('videoStatus').textContent='正在辨識停留畫面 '+Math.round(m.progress*100)+'%'}});
-  const trips=[],keys=new Set();
-  for(let i=0;i<selected.length&&!stopped;i++){const item=selected[i],result=await worker.recognize(item.canvas),trip=videoTrip(result.data.text,item.time);if(trip){const key=[Math.round(+trip.p.actual||0),Math.round(+trip.p.gross||0),Math.round(+trip.p.fee||0)].join('/');if(!keys.has(key)){keys.add(key);trips.push(trip);renderTrips(trips)}}$('videoProgress').value=video.duration+i/selected.length*video.duration;$('videoStatus').textContent='正在辨識第 '+(i+1)+' / '+selected.length+' 個停留畫面，已找到 '+trips.length+' 趟'}
-  if(!stopped)$('videoStatus').textContent=trips.length?'完成：辨識到 '+trips.length+' 趟。請展開核對原始文字。':'完成，但未找到可確認的費用明細；請放慢錄影或讓每趟停留約 2 秒。';
- }catch(e){if(!stopped)$('videoStatus').textContent='影片辨識失敗：'+(e.message||'請改用較清晰的 MP4 錄影')}
- finally{if(worker){await worker.terminate().catch(()=>{});worker=null}button.disabled=false;$('videoFile').disabled=false;$('videoStop').hidden=true;if(videoUrl){URL.revokeObjectURL(videoUrl);videoUrl=''}video.removeAttribute('src');video.load()}
-};
-})();
-</script>
 
 
 </body>
