@@ -280,12 +280,13 @@ $('batchFilter').onchange=renderResults;
 $('batchStop').onclick=()=>{stopped=true;$('batchStop').disabled=true;$('batchStatus').textContent='正在停止，保留已完成結果…';worker?.terminate().catch(()=>{})};
 $('batchStart').onclick=async()=>{
  if(running)return;if(!files.length){$('batchStatus').textContent='請先選擇圖片';return}if(!window.Tesseract){$('batchStatus').textContent='辨識元件未載入，請確認網路後重新整理';return}
- running=true;stopped=false;jobs=[];$('batchStart').disabled=$('batchClear').disabled=$('batchFiles').disabled=true;$('ocrBtn').disabled=true;$('batchStop').hidden=false;$('batchStop').disabled=false;$('batchProgress').max=files.length;$('batchProgress').value=0;renderQueue();
+ let failure='';running=true;stopped=false;jobs=[];$('batchStart').disabled=$('batchClear').disabled=$('batchFiles').disabled=true;$('ocrBtn').disabled=true;$('batchStop').hidden=false;$('batchStop').disabled=false;$('batchProgress').max=files.length;$('batchProgress').value=0;renderQueue();$('batchStatus').textContent='已收到 '+files.length+' 張，正在載入辨識模型；首次使用可能需要 1–3 分鐘…';await new Promise(requestAnimationFrame);
  try{
-  worker=await Tesseract.createWorker('chi_tra+eng',1,{logger:m=>{if(m.status==='recognizing text')$('batchStatus').textContent='正在辨識：'+Math.round(m.progress*100)+'%'}});
-  for(let i=0;i<files.length&&!stopped;i++){try{$('batchStatus').textContent='正在處理第 '+(i+1)+' / '+files.length+' 張：'+files[i].name;const job=await recognizeTrip(files[i],i);jobs.push(job)}catch(e){if(!stopped)jobs.push({file:files[i],status:'失敗',note:e.message||'辨識失敗，已繼續下一張'})}$('batchProgress').value=i+1;renderResults()}
- }catch(e){if(!stopped)$('batchStatus').textContent='批次辨識無法啟動：'+(e.message||'請重新整理後再試')}
- finally{if(worker){await worker.terminate().catch(()=>{});worker=null}running=false;$('batchStart').disabled=$('batchClear').disabled=$('batchFiles').disabled=false;$('ocrBtn').disabled=false;$('batchStop').hidden=true;renderQueue();renderResults();summary()}
+  const labels={'loading tesseract core':'正在載入辨識核心','initializing tesseract':'正在啟動辨識器','loading language traineddata':'正在下載中文辨識模型','initializing api':'正在準備中文辨識模型','recognizing text':'正在辨識文字'};
+  worker=await Tesseract.createWorker('chi_tra+eng',1,{logger:m=>{const label=labels[m.status]||'正在準備辨識';$('batchStatus').textContent=label+(Number.isFinite(m.progress)?'：'+Math.round(m.progress*100)+'%':'')+'（共 '+files.length+' 張）'}});
+  for(let i=0;i<files.length&&!stopped;i++){try{$('batchStatus').textContent='正在處理第 '+(i+1)+' / '+files.length+' 張：'+files[i].name;await new Promise(requestAnimationFrame);const job=await recognizeTrip(files[i],i);jobs.push(job)}catch(e){if(!stopped)jobs.push({file:files[i],status:'失敗',note:e.message||'辨識失敗，已繼續下一張'})}$('batchProgress').value=i+1;renderResults()}
+ }catch(e){if(!stopped)failure='批次辨識無法啟動：'+(e.message||'請確認網路後重新整理再試')}
+ finally{if(worker){await worker.terminate().catch(()=>{});worker=null}running=false;$('batchStart').disabled=$('batchClear').disabled=$('batchFiles').disabled=false;$('ocrBtn').disabled=false;$('batchStop').hidden=true;renderQueue();renderResults();summary();if(failure)$('batchStatus').textContent=failure}
 };
 })();
 </script>
