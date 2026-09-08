@@ -170,7 +170,7 @@ function parseOcr(text){
   const time=compact.match(/(\d{1,3})分(?:鐘|锺|鍾)?(?:(\d{1,2})秒)?/), dollars=[...clean.matchAll(/\$\s*(-?\d+(?:\.\d+)?)/g)].map(m=>+m[1]).filter(Number.isFinite), largeNumbers=[...clean.matchAll(/(?:^|\s)(\d{2,5}(?:\.00)?)(?=\s|$)/gm)].map(m=>+m[1]).filter(n=>n>=50&&n<=10000);
   const labeled=(labels)=>{const corpus=normalizedLines.join(' '),re=new RegExp(`(?:${labels})[^\\d$-]{0,35}-?\\$?(\\d+(?:\\.\\d+)?)`,'gi'),values=[];for(const m of corpus.matchAll(re)){let n=+m[1];if(n>=10000&&n<=999999&&/^\d+00$/.test(m[1]))n/=100;if(n>0&&n<10000)values.push(n)}return values};
   const balance=labeled('行程餘額|行程余額|最終餘額'), net=labeled('您的[費费賣]用明[細细]|實拿金額|司機實拿|您的收入|淨收入'), gross=labeled('行程費用|行程費用|車資'), fees=labeled('服務[費费賣買](?!稅金)|Uber\\s*fee'), tolls=labeled('過路費|通行費|toll'), tips=labeled('小費|tip'), adjustments=labeled('退款|行程調整|其他調整|調整');
-  let fee=fees.length?Math.max(...fees):0,estimatedMoney=false,grossFare=gross.at(-1)||0;const tip=tips.at(-1)||0, adjustment=adjustments.at(-1)||0;
+  let fee=fees.length?Math.max(...fees):0,estimatedMoney=false,grossFare=gross.at(-1)||0;const tip=tips.at(-1)||0;let adjustment=adjustments.at(-1)||0;if(adjustment>=1000&&adjustment%100===0&&(!grossFare||adjustment>grossFare*2))adjustment/=100;
   let actual=balance.at(-1)||net.at(-1)||0;
   if(!actual&&grossFare&&fee&&grossFare>fee)actual=grossFare-fee+tip+adjustment;
   // 有調整但只辨識到上層總額時，從實拿與服務費還原未含調整的行程費用。
@@ -179,7 +179,8 @@ function parseOcr(text){
   // 沒有明確的實拿或行程費用標籤時不要猜最後一個金額，避免把日期、點數或其他費用誤當實拿。
   if(!actual&&!grossFare){const positive=dollars.filter(n=>n>0&&n<10000),decimalMoney=[...new Set([...clean.matchAll(/(?:^|\s|[$S])\s*(\d{2,4})[.,]00\b/gm)].map(m=>+m[1]).filter(n=>n>=50&&n<10000))];actual=positive.length===1?positive[0]:(decimalMoney.length===1?decimalMoney[0]:'')}
   if(!fee&&grossFare&&actual)fee=Math.max(0,grossFare+tip+adjustment-actual);
-  return{km:distances.length?Math.max(...distances):'',mins:time?(+time[1]+(+time[2]||0)/60):'',actual,fee:fee||'',toll:tolls.at(-1)||0,tollFound:tolls.length>0,tip,adjustment,gross:grossFare||'',estimatedMoney};
+  let correctedActual=false;if(grossFare&&fee){const expectedActual=Math.max(0,grossFare+adjustment-fee+tip),looksLikeFare=actual&&(Math.abs(actual-grossFare)<=2||Math.abs(actual-(grossFare+adjustment))<=2);if(expectedActual>0&&(!actual||(Math.abs(actual-expectedActual)>2&&looksLikeFare))){actual=expectedActual;correctedActual=true}}
+  return{km:distances.length?Math.max(...distances):'',mins:time?(+time[1]+(+time[2]||0)/60):'',actual,fee:fee||'',toll:tolls.at(-1)||0,tollFound:tolls.length>0,tip,adjustment,gross:grossFare||'',estimatedMoney,correctedActual};
 }
 function extractOcrAddresses(text){
   const aliases=['新北市','桃園市','臺北市','台北市','基隆市','新竹市','新竹縣'];
@@ -226,7 +227,7 @@ async function recognizeTrip(file,index){
  const explicit=/您的[費费賣]用明[細细]/.test(compact),valid=+p.km>0&&+p.mins>0&&+p.actual>0,completeMoney=+p.gross>0&&+p.fee>0;
  if(!p.actual&&completeMoney){p.actual=Math.max(0,+p.gross+(+p.adjustment||0)-+p.fee+(+p.tip||0));p.calculatedActual=true}
  const delta=completeMoney&&+p.actual>0?(+p.actual-(+p.gross+(+p.adjustment||0)-+p.fee+(+p.tip||0))):null;
- return{file,p,text,explicit,status:valid&&explicit&&delta!==null&&Math.abs(delta)<=2?'完成':'待確認',note:!valid?'距離、時間或實拿尚未完整辨識':!explicit?'實拿由明細加減補算，請核對原圖':delta===null?'明細項目不足，請核對原圖':Math.abs(delta)>2?'明細加減不一致，請核對原圖':'明細加減一致',delta}
+ return{file,p,text,explicit,status:valid&&explicit&&delta!==null&&Math.abs(delta)<=2?'完成':'待確認',note:!valid?'距離、時間或實拿尚未完整辨識':p.correctedActual?'實拿已依行程費用、調整與服務費修正':!explicit?'實拿由明細加減補算，請核對原圖':delta===null?'明細項目不足，請核對原圖':Math.abs(delta)>2?'明細加減不一致，請核對原圖':'明細加減一致',delta}
 }
 function renderQueue(){
  releaseThumbs();const box=$('batchQueue');box.replaceChildren();
