@@ -80,7 +80,7 @@
 <h2 class="section-title">📚 多趟批次截圖辨識</h2>
 <p class="hint">一次選取多張「行程詳細資訊」截圖，每張視為一趟。程式會按檔名排序，辨識明細並比較這趟實拿是否落在一般合理範圍。</p>
 <label for="batchFiles">加入批次照片（可重複選取累加）</label><input id="batchFiles" type="file" accept="image/*" multiple><p class="hint">手機若一次只顯示 2 張，可再次按「加入批次照片」；已選照片會保留並繼續累加。</p>
-<div class="batch-actions"><button id="batchStart" type="button" class="primary">開始辨識全部行程</button><button id="batchClear" type="button">清除圖片</button><button id="batchStop" type="button" hidden>停止（保留完成結果）</button></div>
+<div class="batch-actions"><button id="batchStart" type="button" class="primary" onclick="document.getElementById('batchStatus').textContent='按鈕已啟動，正在準備辨識…';setTimeout(function(){if(window.startBatchRecognition){window.startBatchRecognition()}else{document.getElementById('batchStatus').textContent='批次程式尚未載入，請按上方「重新載入」後再試'}},50)">開始辨識全部行程</button><button id="batchClear" type="button">清除圖片</button><button id="batchStop" type="button" hidden>停止（保留完成結果）</button></div>
 <div id="batchQueue" class="thumb-list" aria-live="polite"></div>
 <progress id="batchProgress" value="0" max="1" style="width:100%;margin-top:12px" aria-label="批次進度"></progress>
 <p id="batchStatus" class="status" role="status" aria-live="polite">尚未選擇圖片</p>
@@ -213,6 +213,7 @@ if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js',{upda
 
 <script>
 (()=>{
+window.addEventListener('error',event=>{const box=document.getElementById('batchStatus');if(box)box.textContent='程式錯誤：'+(event.message||'未知錯誤')});
 let files=[],jobs=[],running=false,stopped=false,worker=null,thumbUrls=[];
 const fields=[['km','距離（公里）'],['mins','時間（分鐘）'],['gross','行程費用'],['adjustment','調整'],['fee','服務費'],['actual','司機實拿']];
 function releaseThumbs(){thumbUrls.forEach(URL.revokeObjectURL);thumbUrls=[]}
@@ -279,7 +280,7 @@ $('#batchFiles').onchange=()=>{if(running)return;const incoming=[...$('batchFile
 $('batchClear').onclick=()=>{if(running)return;files=[];jobs=[];$('batchFiles').value='';renderQueue();renderResults();summary()};
 $('batchFilter').onchange=renderResults;
 $('batchStop').onclick=()=>{stopped=true;$('batchStop').disabled=true;$('batchStatus').textContent='正在停止，保留已完成結果…';worker?.terminate().catch(()=>{})};
-$('batchStart').onclick=async()=>{
+window.startBatchRecognition=async()=>{
  if(running)return;if(!files.length){$('batchStatus').textContent='請先選擇圖片';return}if(!window.Tesseract){$('batchStatus').textContent='辨識元件未載入，請確認網路後重新整理';return}
  let failure='';running=true;stopped=false;jobs=[];$('batchStart').disabled=$('batchClear').disabled=$('batchFiles').disabled=true;$('ocrBtn').disabled=true;$('batchStop').hidden=false;$('batchStop').disabled=false;$('batchProgress').max=files.length;$('batchProgress').value=0;$('batchStatus').textContent='已收到 '+files.length+' 張，正在載入辨識模型；首次使用可能需要 1–3 分鐘…';await new Promise(requestAnimationFrame);
  try{
