@@ -82,7 +82,7 @@
 <progress id="batchProgress" value="0" max="1" style="width:100%;margin-top:12px" aria-label="批次進度"></progress>
 <p id="batchStatus" class="status" role="status" aria-live="polite">尚未選擇圖片</p>
 <label for="batchFilter">結果篩選</label><select id="batchFilter"><option value="">全部</option><option>完成</option><option>待確認</option><option>失敗</option><option value="合理">金額合理</option><option value="偏低">金額偏低</option><option value="偏高">金額偏高</option></select>
-<p class="hint">合理範圍採現有一般行程樣本模型，以距離與時間估算司機實拿，±15% 列為合理；結果用來找出值得檢查的行程，不代表平台正式計價。</p><div id="batchResults"></div>
+<p class="hint">路線差距會依辨識到的上下車地址使用道路路線推估。合理範圍採現有一般行程樣本模型，以距離與時間估算司機實拿，±10% 列為合理；結果用來找出值得檢查的行程，不代表平台正式計價。</p><div id="batchResults"></div>
 </section>
 
   <section class="card">
@@ -180,7 +180,8 @@ function parseOcr(text){
   if(!actual&&!grossFare){const positive=dollars.filter(n=>n>0&&n<10000),decimalMoney=[...new Set([...clean.matchAll(/(?:^|\s|[$S])\s*(\d{2,4})[.,]00\b/gm)].map(m=>+m[1]).filter(n=>n>=50&&n<10000))];actual=positive.length===1?positive[0]:(decimalMoney.length===1?decimalMoney[0]:'')}
   if(!fee&&grossFare&&actual)fee=Math.max(0,grossFare+tip+adjustment-actual);
   let correctedActual=false;if(grossFare&&fee){const expectedActual=Math.max(0,grossFare+adjustment-fee+tip),looksLikeFare=actual&&(Math.abs(actual-grossFare)<=2||Math.abs(actual-(grossFare+adjustment))<=2);if(expectedActual>0&&(!actual||(Math.abs(actual-expectedActual)>2&&looksLikeFare))){actual=expectedActual;correctedActual=true}}
-  return{km:distances.length?Math.max(...distances):'',mins:time?(+time[1]+(+time[2]||0)/60):'',actual,fee:fee||'',toll:tolls.at(-1)||0,tollFound:tolls.length>0,tip,adjustment,gross:grossFare||'',estimatedMoney,correctedActual};
+  const parsedMins=time?(+time[1]+(+time[2]||0)/60):'';let parsedKm=distances.length?Math.max(...distances):'';if(parsedKm>100&&parsedMins&&parsedMins<180)parsedKm/=100;
+  return{km:parsedKm,mins:parsedMins,actual,fee:fee||'',toll:tolls.at(-1)||0,tollFound:tolls.length>0,tip,adjustment,gross:grossFare||'',estimatedMoney,correctedActual};
 }
 function extractOcrAddresses(text){
   const aliases=['新北市','桃園市','臺北市','台北市','基隆市','新竹市','新竹縣'];
@@ -190,7 +191,7 @@ function extractOcrAddressesFlexible(text){
   const strict=extractOcrAddresses(text);if(strict.length===2)return strict;
   const source=text.split('--- numeric ---')[0],lines=source.split(/\r?\n/).map(s=>s.trim().replace(/[|（）()]/g,' ')).filter(Boolean);
   const candidates=lines.filter(line=>/(?:市|縣).{0,24}(?:區|鄉|鎮|市).{0,40}(?:路|街|大道|巷|段|里|村)/.test(line)).map(line=>{let value=line.replace(/^.*?(?=(?:台灣|臺灣|Taiwan|台北市|臺北市|新北市|桃園市|基隆市|新竹[市縣]))/i,'').replace(/^(?:台灣|臺灣|Taiwan)/i,'').trim();['台北市','臺北市','新北市','桃園市','基隆市','新竹市','新竹縣'].forEach(name=>value=value.replace(name+name,name));return value});
-  lines.forEach((line,i)=>{if(/\b(?:Rd|Road|St|Street|Ave|Avenue)\b/i.test(line)){const joined=lines.slice(i,i+3).join(' ').replace(/\s{2,}/g,' '),match=joined.match(/^(.{4,180}?(?:TW|Taiwan)\s*,?\s*\d{3,6})\b/i);if(match)candidates.push(match[1].trim())}});
+  lines.forEach((line,i)=>{if(/\b(?:Rd|Road|St|Street|Ave|Avenue)\b|(?:路|街|巷|段).*(?:District|City|區|TW)/i.test(line)){const joined=lines.slice(i,i+3).join(' ').replace(/\s{2,}/g,' '),match=joined.match(/^(.{4,180}?(?:TW|Taiwan)\s*,?\s*\d{3,6})\b/i);if(match)candidates.push(match[1].trim())}});
   return [...new Set([...candidates,...strict])].slice(0,2);
 }
 function amountCrop(file){return new Promise((resolve,reject)=>{const img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{const canvas=document.createElement('canvas'),sy=Math.round(img.height*.12),sh=Math.round(img.height*.14),scale=2;canvas.width=img.width*scale;canvas.height=sh*scale;canvas.getContext('2d').drawImage(img,0,sy,img.width,sh,0,0,canvas.width,canvas.height);URL.revokeObjectURL(url);resolve(canvas)};img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('無法讀取圖片'))};img.src=url})}
@@ -221,20 +222,30 @@ function cropForOcr(img,start,end){
 function assessFare(p){
  if(!(Number(p.km)>0&&Number(p.mins)>0&&Number(p.actual)>0))return null;
  const expected=Math.max(64,40.039+18.727*Number(p.km)+2.280*Number(p.mins)),comparable=Math.max(0,Number(p.actual)-(+p.toll||0)-(+p.tip||0)),diff=comparable-expected,pct=diff/expected*100;
- const level=Math.abs(pct)<=15?'合理':pct>15?'偏高':'偏低';
- const explanation=level==='合理'?'落在一般行程實拿基準的 ±15% 內':level==='偏高'?'可能包含動態加成、獎勵、調整或特殊計價':'低於一般基準，建議檢查扣款、調整及完整費用明細';
+ const level=Math.abs(pct)<=10?'合理':pct>15?'偏高':'偏低';
+ const explanation=level==='合理'?'落在一般行程實拿基準的 ±10% 內':level==='偏高'?'可能包含動態加成、獎勵、調整或特殊計價':'低於一般基準，建議檢查扣款、調整及完整費用明細';
  return{expected,comparable,diff,pct,level,explanation}
 }
+async function geocodeBatchAddress(address){
+ const key='batchGeo3:'+address,cached=localStorage.getItem(key);if(cached)return JSON.parse(cached);
+ const query=expandAddress(address),url='https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&forStorage=false&outSR=4326&maxLocations=1&countryCode=TWN&SingleLine='+encodeURIComponent(query),res=await fetch(url);
+ if(!res.ok)throw new Error('地址查詢失敗');const data=await res.json(),hit=(data.candidates||[])[0];if(!hit||hit.score<60)throw new Error('地址相符度不足');
+ const out={lat:+hit.location.y,lon:+hit.location.x,name:hit.address,score:hit.score};localStorage.setItem(key,JSON.stringify(out));return out
+}
+async function assessRoute(text,p){
+ const addresses=extractOcrAddressesFlexible(text);if(addresses.length<2)return{status:'未辨識到完整上下車地',addresses};
+ try{const from=await geocodeBatchAddress(addresses[0]);await new Promise(r=>setTimeout(r,150));const to=await geocodeBatchAddress(addresses[1]),estimated=await route(from,to),kmDiff=Number(p.km)-estimated.km,minsDiff=Number(p.mins)-estimated.mins;return{status:'完成',addresses,from,to,km:estimated.km,mins:estimated.mins,kmDiff,minsDiff,kmPct:kmDiff/estimated.km*100,minsPct:minsDiff/estimated.mins*100}}catch(e){return{status:'無法推估路線',addresses,error:e.message}}
+}
 async function recognizeTrip(file,index){
- const img=await loadImage(file),top=cropForOcr(img,.095,.245),fare=cropForOcr(img,.365,.775);
+ const img=await loadImage(file),top=cropForOcr(img,.085,.37),fare=cropForOcr(img,.365,.775);
  await worker.setParameters({tessedit_pageseg_mode:6,preserve_interword_spaces:'1'});
  const header=await worker.recognize(top),details=await worker.recognize(fare);
  top.width=top.height=fare.width=fare.height=1;
  const text=header.data.text+'\n--- 費用明細 ---\n'+details.data.text,p=parseOcr(text),compact=text.replace(/\s+/g,'');
  const explicit=/您的[費费賣]用明[細细]/.test(compact),valid=+p.km>0&&+p.mins>0&&+p.actual>0,completeMoney=+p.gross>0&&+p.fee>0;
  if(!p.actual&&completeMoney){p.actual=Math.max(0,+p.gross+(+p.adjustment||0)-+p.fee+(+p.tip||0));p.calculatedActual=true}
- const delta=completeMoney&&+p.actual>0?(+p.actual-(+p.gross+(+p.adjustment||0)-+p.fee+(+p.tip||0))):null,reason=assessFare(p);
- return{file,p,text,explicit,reason,status:valid&&explicit&&delta!==null&&Math.abs(delta)<=2?'完成':'待確認',note:!valid?'距離、時間或實拿尚未完整辨識':p.correctedActual?'實拿已依行程費用、調整與服務費修正':!explicit?'實拿由明細加減補算，請核對原圖':delta===null?'明細項目不足，請核對原圖':Math.abs(delta)>2?'明細加減不一致，請核對原圖':'明細加減一致',delta}
+ const delta=completeMoney&&+p.actual>0?(+p.actual-(+p.gross+(+p.adjustment||0)-+p.fee+(+p.tip||0))):null,reason=assessFare(p),routeComparison=await assessRoute(text,p);
+ return{file,p,text,explicit,reason,routeComparison,status:valid&&explicit&&delta!==null&&Math.abs(delta)<=2?'完成':'待確認',note:!valid?'距離、時間或實拿尚未完整辨識':p.correctedActual?'實拿已依行程費用、調整與服務費修正':!explicit?'實拿由明細加減補算，請核對原圖':delta===null?'明細項目不足，請核對原圖':Math.abs(delta)>2?'明細加減不一致，請核對原圖':'明細加減一致',delta}
 }
 function renderQueue(){
  releaseThumbs();const box=$('batchQueue');box.replaceChildren();
@@ -252,6 +263,7 @@ function renderResults(){
   const filter=$('batchFilter').value;if(filter&&j.status!==filter&&j.reason?.level!==filter)return;
   const d=document.createElement('details'),s=document.createElement('summary');s.textContent=(i+1)+'. '+j.file.name+' — 明細'+j.status+(j.p?.actual?'，實拿 '+money(j.p.actual):'')+(j.reason?'｜金額'+j.reason.level:'');d.append(s);
   const note=document.createElement('p');note.textContent='明細核對：'+(j.note||'');d.append(note);
+  if(j.routeComparison){const rc=j.routeComparison,routeBox=document.createElement('div');routeBox.className='compare';if(rc.status==='完成'){routeBox.textContent='路線比對｜地圖推估 '+rc.km.toFixed(2)+' 公里、'+Math.round(rc.mins)+' 分鐘；截圖實際 '+Number(j.p.km).toFixed(2)+' 公里、'+Math.round(Number(j.p.mins))+' 分鐘。距離 '+(rc.kmDiff>=0?'+':'−')+Math.abs(rc.kmDiff).toFixed(2)+' 公里（'+(rc.kmPct>=0?'+':'')+rc.kmPct.toFixed(1)+'%），時間 '+(rc.minsDiff>=0?'+':'−')+Math.abs(rc.minsDiff).toFixed(1)+' 分鐘（'+(rc.minsPct>=0?'+':'')+rc.minsPct.toFixed(1)+'%）。';const addr=document.createElement('small');addr.textContent='上車：'+rc.addresses[0]+'｜下車：'+rc.addresses[1];routeBox.append(document.createElement('br'),addr)}else routeBox.textContent='路線比對：'+rc.status+(rc.addresses?.length?'（辨識到 '+rc.addresses.length+' 個地址）':'');d.append(routeBox)}
   if(j.reason){const verdict=document.createElement('div');verdict.className='verdict '+(j.reason.level==='合理'?'good':j.reason.level==='偏高'?'mid':'bad');verdict.textContent='金額'+j.reason.level+'｜一般實拿基準約 '+money(j.reason.expected)+'，本次可比較實拿 '+money(j.reason.comparable)+'，差額 '+(j.reason.diff>=0?'+':'−')+money(Math.abs(j.reason.diff))+'（'+(j.reason.pct>=0?'+':'')+j.reason.pct.toFixed(1)+'%）。'+j.reason.explanation+'。';d.append(verdict)}
   if(j.p){const grid=document.createElement('div');grid.className='result-grid';fields.forEach(([key,label])=>{const wrap=document.createElement('label');wrap.textContent=label;const input=document.createElement('input');input.type='number';input.step='0.01';input.value=j.p[key]??'';input.disabled=running;input.oninput=()=>{j.p[key]=input.value===''?'':+input.value};wrap.append(input);grid.append(wrap)});d.append(grid);
    const verify=document.createElement('button');verify.type='button';verify.textContent='重新核對這筆';verify.disabled=running;verify.onclick=()=>{const p=j.p,valid=+p.km>0&&+p.mins>0&&+p.actual>0,delta=+p.gross>0&&+p.fee>0?(+p.actual-(+p.gross+(+p.adjustment||0)-+p.fee+(+p.tip||0))):null;j.delta=delta;j.reason=assessFare(p);j.status=valid&&delta!==null&&Math.abs(delta)<=2?'完成':'待確認';j.note=delta===null?'明細項目不足，請核對原圖':Math.abs(delta)<=2?'明細加減一致':'明細加減不一致，請核對原圖';renderResults();summary()};d.append(verify)}
