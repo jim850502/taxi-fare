@@ -275,6 +275,7 @@ function renderResults(){
  })
 }
 $('#batchFiles').onchange=()=>{if(running)return;const incoming=[...$('batchFiles').files].filter(f=>f.type.startsWith('image/')),seen=new Set(files.map(f=>`${f.name}|${f.size}|${f.lastModified}`));incoming.forEach(f=>{const key=`${f.name}|${f.size}|${f.lastModified}`;if(!seen.has(key)){files.push(f);seen.add(key)}});files.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'}));jobs=[];renderQueue();renderResults();summary()};
+$('#batchFiles').onchange=()=>{if(running)return;const incoming=[...$('batchFiles').files].filter(f=>f.type.startsWith('image/')),seen=new Set(files.map(f=>`${f.name}|${f.size}|${f.lastModified}`));incoming.forEach(f=>{const key=`${f.name}|${f.size}|${f.lastModified}`;if(!seen.has(key)){files.push(f);seen.add(key)}});files.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'}));jobs=[];renderQueue();renderResults();summary()};
 $('batchClear').onclick=()=>{if(running)return;files=[];jobs=[];$('batchFiles').value='';renderQueue();renderResults();summary()};
 $('batchFilter').onchange=renderResults;
 $('batchStop').onclick=()=>{stopped=true;$('batchStop').disabled=true;$('batchStatus').textContent='正在停止，保留已完成結果…';worker?.terminate().catch(()=>{})};
