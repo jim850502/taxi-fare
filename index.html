@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#111827">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <meta name="description" content="免安裝的台灣計程車車資判斷工具">
   <link rel="manifest" href="manifest.webmanifest">
   <title>車資判斷助手</title>
@@ -205,7 +208,7 @@ $('compareBtn').addEventListener('click',()=>{const km=+$('ocrKm').value,mins=+$
 $('locate').addEventListener('click',()=>{if(!navigator.geolocation){$('status').textContent='此瀏覽器不支援定位';return}$('status').textContent='正在取得目前位置…';navigator.geolocation.getCurrentPosition(p=>{$('from').value=`${p.coords.latitude.toFixed(6)},${p.coords.longitude.toFixed(6)}`;$('from').dataset.coords=`${p.coords.longitude},${p.coords.latitude}`;$('status').textContent='已取得目前位置'},e=>$('status').textContent='無法取得定位，請確認瀏覽器定位權限')});
 // 若起點是 GPS 座標，直接使用，避免送出反查請求。
 const oldGeocode=geocode;geocode=async function(q){const m=q.match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/);return m?{lat:+m[1],lon:+m[2],name:'目前位置'}:oldGeocode(q)};
-if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(reg=>reg.update()).catch(()=>{});}
 </script>
 
 <script>
