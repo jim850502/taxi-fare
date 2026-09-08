@@ -75,14 +75,14 @@
 
 <section class="card" id="batchSection">
 <h2 class="section-title">📚 批次截圖辨識</h2>
-<p class="hint">一次選取多張「行程詳細資訊」截圖，每張視為一趟。程式會按檔名排序，分別辨識時間、距離、行程費用、調整、服務費與司機實拿。</p>
+<p class="hint">一次選取多張「行程詳細資訊」截圖，每張視為一趟。程式會按檔名排序，辨識明細並比較這趟實拿是否落在一般合理範圍。</p>
 <label for="batchFiles">選擇多趟截圖</label><input id="batchFiles" type="file" accept="image/jpeg,image/png,image/webp" multiple>
 <div class="batch-actions"><button id="batchStart" class="primary">開始批次辨識</button><button id="batchClear" type="button">清除圖片</button><button id="batchStop" type="button" hidden>停止（保留完成結果）</button></div>
 <div id="batchQueue" class="thumb-list" aria-live="polite"></div>
 <progress id="batchProgress" value="0" max="1" style="width:100%;margin-top:12px" aria-label="批次進度"></progress>
 <p id="batchStatus" class="status" role="status" aria-live="polite">尚未選擇圖片</p>
-<label for="batchFilter">結果篩選</label><select id="batchFilter"><option value="">全部</option><option>完成</option><option>待確認</option><option>失敗</option></select>
-<div id="batchResults"></div>
+<label for="batchFilter">結果篩選</label><select id="batchFilter"><option value="">全部</option><option>完成</option><option>待確認</option><option>失敗</option><option value="合理">金額合理</option><option value="偏低">金額偏低</option><option value="偏高">金額偏高</option></select>
+<p class="hint">合理範圍採現有一般行程樣本模型，以距離與時間估算司機實拿，±15% 列為合理；結果用來找出值得檢查的行程，不代表平台正式計價。</p><div id="batchResults"></div>
 </section>
 
   <section class="card">
@@ -218,6 +218,13 @@ function cropForOcr(img,start,end){
  canvas.width=Math.round(img.naturalWidth*scale);canvas.height=Math.round(sourceH*scale);ctx.drawImage(img,0,sourceY,img.naturalWidth,sourceH,0,0,canvas.width,canvas.height);
  const data=ctx.getImageData(0,0,canvas.width,canvas.height);for(let i=0;i<data.data.length;i+=4){const y=.299*data.data[i]+.587*data.data[i+1]+.114*data.data[i+2],v=y>205?255:y<85?0:Math.max(0,Math.min(255,(y-128)*1.45+128));data.data[i]=data.data[i+1]=data.data[i+2]=v}ctx.putImageData(data,0,0);return canvas
 }
+function assessFare(p){
+ if(!(Number(p.km)>0&&Number(p.mins)>0&&Number(p.actual)>0))return null;
+ const expected=Math.max(64,40.039+18.727*Number(p.km)+2.280*Number(p.mins)),comparable=Math.max(0,Number(p.actual)-(+p.toll||0)-(+p.tip||0)),diff=comparable-expected,pct=diff/expected*100;
+ const level=Math.abs(pct)<=15?'合理':pct>15?'偏高':'偏低';
+ const explanation=level==='合理'?'落在一般行程實拿基準的 ±15% 內':level==='偏高'?'可能包含動態加成、獎勵、調整或特殊計價':'低於一般基準，建議檢查扣款、調整及完整費用明細';
+ return{expected,comparable,diff,pct,level,explanation}
+}
 async function recognizeTrip(file,index){
  const img=await loadImage(file),top=cropForOcr(img,.095,.245),fare=cropForOcr(img,.365,.775);
  await worker.setParameters({tessedit_pageseg_mode:6,preserve_interword_spaces:'1'});
@@ -226,8 +233,8 @@ async function recognizeTrip(file,index){
  const text=header.data.text+'\n--- 費用明細 ---\n'+details.data.text,p=parseOcr(text),compact=text.replace(/\s+/g,'');
  const explicit=/您的[費费賣]用明[細细]/.test(compact),valid=+p.km>0&&+p.mins>0&&+p.actual>0,completeMoney=+p.gross>0&&+p.fee>0;
  if(!p.actual&&completeMoney){p.actual=Math.max(0,+p.gross+(+p.adjustment||0)-+p.fee+(+p.tip||0));p.calculatedActual=true}
- const delta=completeMoney&&+p.actual>0?(+p.actual-(+p.gross+(+p.adjustment||0)-+p.fee+(+p.tip||0))):null;
- return{file,p,text,explicit,status:valid&&explicit&&delta!==null&&Math.abs(delta)<=2?'完成':'待確認',note:!valid?'距離、時間或實拿尚未完整辨識':p.correctedActual?'實拿已依行程費用、調整與服務費修正':!explicit?'實拿由明細加減補算，請核對原圖':delta===null?'明細項目不足，請核對原圖':Math.abs(delta)>2?'明細加減不一致，請核對原圖':'明細加減一致',delta}
+ const delta=completeMoney&&+p.actual>0?(+p.actual-(+p.gross+(+p.adjustment||0)-+p.fee+(+p.tip||0))):null,reason=assessFare(p);
+ return{file,p,text,explicit,reason,status:valid&&explicit&&delta!==null&&Math.abs(delta)<=2?'完成':'待確認',note:!valid?'距離、時間或實拿尚未完整辨識':p.correctedActual?'實拿已依行程費用、調整與服務費修正':!explicit?'實拿由明細加減補算，請核對原圖':delta===null?'明細項目不足，請核對原圖':Math.abs(delta)>2?'明細加減不一致，請核對原圖':'明細加減一致',delta}
 }
 function renderQueue(){
  releaseThumbs();const box=$('batchQueue');box.replaceChildren();
@@ -236,17 +243,18 @@ function renderQueue(){
 }
 function summary(){
  if(running)return;
- const done=jobs.filter(j=>j.status==='完成').length,review=jobs.filter(j=>j.status==='待確認').length,failed=jobs.filter(j=>j.status==='失敗').length;
- $('batchStatus').textContent=jobs.length?'批次結果：完成 '+done+'、待確認 '+review+'、失敗 '+failed+'，共 '+jobs.length+' 趟':files.length?'已載入 '+files.length+' 張，每張視為一趟。':'尚未選擇圖片'
+ const done=jobs.filter(j=>j.status==='完成').length,review=jobs.filter(j=>j.status==='待確認').length,failed=jobs.filter(j=>j.status==='失敗').length,low=jobs.filter(j=>j.reason?.level==='偏低').length,normal=jobs.filter(j=>j.reason?.level==='合理').length,high=jobs.filter(j=>j.reason?.level==='偏高').length;
+ $('batchStatus').textContent=jobs.length?'批次結果：明細完成 '+done+'、待確認 '+review+'、失敗 '+failed+'；金額合理 '+normal+'、偏低 '+low+'、偏高 '+high+'，共 '+jobs.length+' 趟':files.length?'已載入 '+files.length+' 張，每張視為一趟。':'尚未選擇圖片'
 }
 function renderResults(){
  const box=$('batchResults');box.replaceChildren();
  jobs.forEach((j,i)=>{
-  if($('batchFilter').value&&j.status!==$('batchFilter').value)return;
-  const d=document.createElement('details'),s=document.createElement('summary');s.textContent=(i+1)+'. '+j.file.name+' — '+j.status+(j.p?.actual?'，實拿 '+money(j.p.actual):'');d.append(s);
-  const note=document.createElement('p');note.textContent=j.note||'';d.append(note);
+  const filter=$('batchFilter').value;if(filter&&j.status!==filter&&j.reason?.level!==filter)return;
+  const d=document.createElement('details'),s=document.createElement('summary');s.textContent=(i+1)+'. '+j.file.name+' — 明細'+j.status+(j.p?.actual?'，實拿 '+money(j.p.actual):'')+(j.reason?'｜金額'+j.reason.level:'');d.append(s);
+  const note=document.createElement('p');note.textContent='明細核對：'+(j.note||'');d.append(note);
+  if(j.reason){const verdict=document.createElement('div');verdict.className='verdict '+(j.reason.level==='合理'?'good':j.reason.level==='偏高'?'mid':'bad');verdict.textContent='金額'+j.reason.level+'｜一般實拿基準約 '+money(j.reason.expected)+'，本次可比較實拿 '+money(j.reason.comparable)+'，差額 '+(j.reason.diff>=0?'+':'−')+money(Math.abs(j.reason.diff))+'（'+(j.reason.pct>=0?'+':'')+j.reason.pct.toFixed(1)+'%）。'+j.reason.explanation+'。';d.append(verdict)}
   if(j.p){const grid=document.createElement('div');grid.className='result-grid';fields.forEach(([key,label])=>{const wrap=document.createElement('label');wrap.textContent=label;const input=document.createElement('input');input.type='number';input.step='0.01';input.value=j.p[key]??'';input.disabled=running;input.oninput=()=>{j.p[key]=input.value===''?'':+input.value};wrap.append(input);grid.append(wrap)});d.append(grid);
-   const verify=document.createElement('button');verify.type='button';verify.textContent='重新核對這筆';verify.disabled=running;verify.onclick=()=>{const p=j.p,valid=+p.km>0&&+p.mins>0&&+p.actual>0,delta=+p.gross>0&&+p.fee>0?(+p.actual-(+p.gross+(+p.adjustment||0)-+p.fee+(+p.tip||0))):null;j.delta=delta;j.status=valid&&delta!==null&&Math.abs(delta)<=2?'完成':'待確認';j.note=delta===null?'明細項目不足，請核對原圖':Math.abs(delta)<=2?'明細加減一致':'明細加減不一致，請核對原圖';renderResults();summary()};d.append(verify)}
+   const verify=document.createElement('button');verify.type='button';verify.textContent='重新核對這筆';verify.disabled=running;verify.onclick=()=>{const p=j.p,valid=+p.km>0&&+p.mins>0&&+p.actual>0,delta=+p.gross>0&&+p.fee>0?(+p.actual-(+p.gross+(+p.adjustment||0)-+p.fee+(+p.tip||0))):null;j.delta=delta;j.reason=assessFare(p);j.status=valid&&delta!==null&&Math.abs(delta)<=2?'完成':'待確認';j.note=delta===null?'明細項目不足，請核對原圖':Math.abs(delta)<=2?'明細加減一致':'明細加減不一致，請核對原圖';renderResults();summary()};d.append(verify)}
   d.addEventListener('toggle',()=>{if(d.open&&!d.querySelector('.result-preview')){const img=document.createElement('img'),url=URL.createObjectURL(j.file);img.className='result-preview';img.src=url;img.alt=j.file.name;img.onload=()=>URL.revokeObjectURL(url);d.append(img);if(j.text){const pre=document.createElement('pre');pre.className='ocr-raw';pre.textContent=j.text;d.append(pre)}}else if(!d.open){d.querySelector('.result-preview')?.remove();d.querySelector('.ocr-raw')?.remove()}});
   box.append(d)
  })
