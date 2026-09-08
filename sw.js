@@ -1,4 +1,4 @@
-const CACHE='taxi-fare-v40';
+const CACHE='taxi-fare-v41';
 self.addEventListener('install',event=>{self.skipWaiting();event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(['./manifest.webmanifest'])))});
 self.addEventListener('activate',event=>event.waitUntil(Promise.all([
   caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))),
