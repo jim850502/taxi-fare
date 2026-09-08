@@ -84,6 +84,16 @@
 <p class="hint">批次沿用原有明細與估價比較公式。為避免中途等待地址選擇，缺少距離／時間時列為待確認，不自動查路線。</p>
 <label for="batchFilter">結果篩選</label><select id="batchFilter"><option value="">全部</option><option>完成</option><option>待確認</option><option>異常</option><option>失敗</option></select>
 <div id="batchResults"></div>
+    <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+    <h3 class="section-title">🎥 錄影批次辨識</h3>
+    <p class="hint">上傳逐趟查看「行程詳細資訊」的螢幕錄影。程式會略過滑動畫面、擷取停留畫面，再辨識每趟的「您的費用明細」。影片只在你的裝置內處理。</p>
+    <label for="videoFile">選擇螢幕錄影</label><input id="videoFile" type="file" accept="video/*">
+    <button class="primary" id="videoStart">分析影片</button><button id="videoStop" hidden>停止（保留已完成結果）</button>
+    <progress id="videoProgress" value="0" max="1" style="width:100%;margin-top:12px" aria-label="影片分析進度"></progress>
+    <p class="status" id="videoStatus" role="status" aria-live="polite">尚未選擇影片</p>
+    <video id="videoReader" muted playsinline hidden></video><canvas id="videoCanvas" hidden></canvas>
+    <div id="videoResults"></div>
+
 </section>
 
   <section class="card">
@@ -169,7 +179,7 @@ function parseOcr(text){
   const normalizedLines=clean.split(/\r?\n/).map(line=>line.replace(/\s+/g,'')).filter(Boolean);
   const distances=[...compact.matchAll(/(\d+(?:\.\d+)?)\s*(?:公里|km)/gi)].map(m=>+m[1]).filter(n=>n>.1&&n<500);
   const time=compact.match(/(\d+)分鐘(?:(\d+)秒)?/), dollars=[...clean.matchAll(/\$\s*(-?\d+(?:\.\d+)?)/g)].map(m=>+m[1]).filter(Number.isFinite), largeNumbers=[...clean.matchAll(/(?:^|\s)(\d{2,5}(?:\.00)?)(?=\s|$)/gm)].map(m=>+m[1]).filter(n=>n>=50&&n<=10000);
-  const labeled=(labels)=>{const re=new RegExp(`(?:${labels})[^\\d$-]{0,25}-?\\$?(\\d+(?:\\.\\d+)?)`,'i');return normalizedLines.map(line=>line.match(re)).filter(Boolean).map(m=>{let n=+m[1];if(n>=10000&&n<=999999&&/^\d+00$/.test(m[1]))n/=100;return n}).filter(n=>n>0&&n<10000)};
+  const labeled=(labels)=>{const corpus=normalizedLines.join(' '),re=new RegExp(`(?:${labels})[^\\d$-]{0,35}-?\\$?(\\d+(?:\\.\\d+)?)`,'gi'),values=[];for(const m of corpus.matchAll(re)){let n=+m[1];if(n>=10000&&n<=999999&&/^\\d+00$/.test(m[1]))n/=100;if(n>0&&n<10000)values.push(n)}return values};
   const balance=labeled('行程餘額|行程余額|最終餘額'), net=labeled('您的[費賣]用明細|實拿金額|司機實拿|您的收入|淨收入'), gross=labeled('行程費用|行程費用|車資'), fees=labeled('服務[費賣](?!稅金)|Uber\\s*fee'), tolls=labeled('過路費|通行費|toll'), tips=labeled('小費|tip'), adjustments=labeled('退款|行程調整|其他調整');
   let fee=fees.length?Math.max(...fees):0,estimatedMoney=false;const grossFare=gross.at(-1)||0, tip=tips.at(-1)||0, adjustment=adjustments.at(-1)||0;
   let actual=balance.at(-1)||net.at(-1)||0;
@@ -284,6 +294,58 @@ $('batchStart').onclick=async()=>{
 };
 })();
 </script>
+
+<script>
+(()=>{
+let stopped=false,worker=null,videoUrl='';
+const seek=(video,time)=>new Promise((resolve,reject)=>{const done=()=>{cleanup();resolve()},fail=()=>{cleanup();reject(new Error('無法讀取影片畫面'))},cleanup=()=>{video.removeEventListener('seeked',done);video.removeEventListener('error',fail)};video.addEventListener('seeked',done,{once:true});video.addEventListener('error',fail,{once:true});video.currentTime=Math.min(time,Math.max(0,video.duration-.05))});
+const metadata=video=>new Promise((resolve,reject)=>{if(video.readyState>=1)return resolve();video.onloadedmetadata=resolve;video.onerror=()=>reject(new Error('此影片格式無法讀取'))});
+function fingerprint(ctx,w,h){const data=ctx.getImageData(0,0,w,h).data,out=[];let sum=0;for(let i=0;i<data.length;i+=4)sum+=(data[i]+data[i+1]+data[i+2])/3;const avg=sum/(data.length/4);for(let i=0;i<data.length;i+=4)out.push(((data[i]+data[i+1]+data[i+2])/3)>avg?1:0);return out}
+function distance(a,b){if(!a||!b)return 999;let d=0;for(let i=0;i<a.length;i++)d+=a[i]!==b[i];return d/a.length*100}
+function makeFrame(video){
+ const scale=Math.min(1,720/video.videoWidth),w=Math.round(video.videoWidth*scale),h=Math.round(video.videoHeight*scale*.72),canvas=$('videoCanvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
+ canvas.width=w;canvas.height=h;ctx.drawImage(video,0,0,video.videoWidth,video.videoHeight*.72,0,0,w,h);
+ const tiny=document.createElement('canvas'),tw=20,th=36;tiny.width=tw;tiny.height=th;const tc=tiny.getContext('2d',{willReadFrequently:true});tc.drawImage(canvas,0,0,tw,th);
+ return {canvas,hash:fingerprint(tc,tw,th)};
+}
+function videoTrip(text,time){
+ const p=parseOcr(text),hasLabels=/行程[費賣用]{1,2}|服務[費賣]|您的.{0,3}[費賣]用明細|trip\s*fare|service\s*fee|your\s*(?:earnings|fare)/i.test(text);
+ if(!hasLabels||!(+p.actual>0||(+p.gross>0&&+p.fee>0)))return null;
+ if(!p.actual&&p.gross&&p.fee)p.actual=Math.max(0,p.gross+(+p.adjustment||0)-p.fee+(+p.tip||0));
+ const audit=p.gross&&p.fee&&p.actual?p.actual-(p.gross-p.fee+(+p.tip||0)+(+p.adjustment||0)):null;
+ return {p,time,status:audit!==null&&Math.abs(audit)>2?'待確認':'完成',audit,text};
+}
+function renderTrips(trips){
+ const box=$('videoResults');box.replaceChildren();
+ trips.forEach((trip,i)=>{const d=document.createElement('details'),s=document.createElement('summary');s.textContent=(i+1)+'. '+Math.floor(trip.time/60)+':'+String(Math.round(trip.time%60)).padStart(2,'0')+' — 實拿 '+money(trip.p.actual)+'（'+trip.status+'）';d.append(s);
+ const p=document.createElement('p');p.textContent='行程費用 '+(trip.p.gross?money(trip.p.gross):'未辨識')+'；調整 '+money(trip.p.adjustment||0)+'；服務費 '+(trip.p.fee?money(trip.p.fee):'未辨識')+'；您的費用明細 '+money(trip.p.actual)+(trip.audit===null?'。缺少明細項目，請核對。':'；核對差額 '+money(Math.abs(trip.audit))+'。');d.append(p);
+ const pre=document.createElement('pre');pre.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere';pre.textContent=trip.text;d.append(pre);box.append(d)});
+}
+$('videoFile').onchange=()=>{const f=$('videoFile').files[0];$('videoStatus').textContent=f?'已選擇 '+f.name+'，按「分析影片」開始。':'尚未選擇影片'};
+$('videoStop').onclick=()=>{stopped=true;$('videoStop').disabled=true;$('videoStatus').textContent='正在停止，保留已完成結果…';worker?.terminate().catch(()=>{})};
+$('videoStart').onclick=async()=>{
+ const file=$('videoFile').files[0];if(!file){$('videoStatus').textContent='請先選擇影片';return}if(!window.Tesseract){$('videoStatus').textContent='辨識元件未載入，請確認網路後重新整理';return}
+ stopped=false;const button=$('videoStart'),video=$('videoReader');button.disabled=true;$('videoFile').disabled=true;$('videoStop').hidden=false;$('videoStop').disabled=false;$('videoResults').replaceChildren();
+ try{
+  if(videoUrl)URL.revokeObjectURL(videoUrl);videoUrl=URL.createObjectURL(file);video.src=videoUrl;await metadata(video);
+  if(!isFinite(video.duration)||video.duration<=0)throw new Error('無法取得影片長度');
+  const step=Math.max(1,video.duration/120),candidates=[];let previous=null;
+  // 第一階段每約一秒檢查一次；只有連續兩格相近才視為停留畫面。
+  for(let t=0;t<video.duration&&!stopped;t+=step){await seek(video,t);const frame=makeFrame(video),movement=distance(previous,frame.hash);previous=frame.hash;if(movement<3.2&&candidates.every(x=>distance(x.hash,frame.hash)>5)){const snapshot=document.createElement('canvas');snapshot.width=frame.canvas.width;snapshot.height=frame.canvas.height;snapshot.getContext('2d').drawImage(frame.canvas,0,0);candidates.push({time:t,canvas:snapshot,hash:frame.hash})}$('videoProgress').value=t;$('videoProgress').max=video.duration*2;$('videoStatus').textContent='正在找停留畫面：'+Math.round(t)+' / '+Math.round(video.duration)+' 秒'}
+  if(stopped)return;
+  if(!candidates.length)throw new Error('沒有找到清晰停留畫面；請在每趟明細停留約 2 秒');
+  // 限制辨識數量，長影片也不會無止境處理；保留時間分布。
+  const selected=candidates.length<=24?candidates:Array.from({length:24},(_,i)=>candidates[Math.round(i*(candidates.length-1)/23)]);
+  worker=await Tesseract.createWorker('chi_tra+eng',1,{logger:m=>{if(m.status==='recognizing text')$('videoStatus').textContent='正在辨識停留畫面 '+Math.round(m.progress*100)+'%'}});
+  const trips=[],keys=new Set();
+  for(let i=0;i<selected.length&&!stopped;i++){const item=selected[i],result=await worker.recognize(item.canvas),trip=videoTrip(result.data.text,item.time);if(trip){const key=[Math.round(+trip.p.actual||0),Math.round(+trip.p.gross||0),Math.round(+trip.p.fee||0)].join('/');if(!keys.has(key)){keys.add(key);trips.push(trip);renderTrips(trips)}}$('videoProgress').value=video.duration+i/selected.length*video.duration;$('videoStatus').textContent='正在辨識第 '+(i+1)+' / '+selected.length+' 個停留畫面，已找到 '+trips.length+' 趟'}
+  if(!stopped)$('videoStatus').textContent=trips.length?'完成：辨識到 '+trips.length+' 趟。請展開核對原始文字。':'完成，但未找到可確認的費用明細；請放慢錄影或讓每趟停留約 2 秒。';
+ }catch(e){if(!stopped)$('videoStatus').textContent='影片辨識失敗：'+(e.message||'請改用較清晰的 MP4 錄影')}
+ finally{if(worker){await worker.terminate().catch(()=>{});worker=null}button.disabled=false;$('videoFile').disabled=false;$('videoStop').hidden=true;if(videoUrl){URL.revokeObjectURL(videoUrl);videoUrl=''}video.removeAttribute('src');video.load()}
+};
+})();
+</script>
+
 
 </body>
 </html>
